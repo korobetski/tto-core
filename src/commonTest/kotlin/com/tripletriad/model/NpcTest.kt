@@ -112,7 +112,9 @@ class NpcTest {
     fun levelModifiersAreTheAs3Ones() {
         assertEquals(0, NpcLevel.NONE.modifier)
         assertEquals(5, NpcLevel.EXPERT.modifier)
-        assertEquals("STR_NPC_LEVEL_EXPERT", NpcLevel.EXPERT.labelKey)
+        // The `@SerialName` stays `STR_NPC_LEVEL_EXPERT` — that is what `npcs.json` holds — but
+        // what is *shown* is app-owned, because no bundle ever translated the serial form.
+        assertEquals("APP_NPC_LEVEL_EXPERT", NpcLevel.EXPERT.labelKey)
     }
 
     /**

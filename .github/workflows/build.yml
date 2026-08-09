@@ -1,0 +1,94 @@
+# The gate. Two consumers depend on this artifact, and neither can be fixed forward once a bad one
+# is published — GitHub Packages refuses to overwrite a released version, and a version that has
+# been resolved once is in somebody's cache. So everything that can be checked is checked here,
+# before `publish.yml` is ever allowed to run.
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Action majors match the client repository's, and for the same two reasons: these are the majors
+# that declare `using: node24`, and `gradle/actions/setup-gradle` is pinned to **v5** deliberately —
+# v6 moves its caching into a component whose use implies accepting Gradle's Terms of Use, which is
+# a licensing decision rather than a maintenance one.
+jobs:
+  quality:
+    name: ktlint + detekt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v5
+      - run: ./gradlew ktlintCheck detekt --no-daemon
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: quality-reports
+          path: |
+            build/reports/ktlint/
+            build/reports/detekt/
+
+  jvm:
+    name: JVM and Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v5
+      # compileSdk is 37 and the runner image does not always carry it. There is no
+      # local.properties on CI, so AGP relies on the ANDROID_HOME this sets.
+      - uses: android-actions/setup-android@v4
+      # `build` runs the common tests on both host targets — `desktopTest` and
+      # `testAndroidHostTest` — and `coverageVerify`, which `check` depends on. `coverageReport` is
+      # named as well so the HTML exists to upload on the runs where the gate passes.
+      - run: ./gradlew build coverageReport --no-daemon
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results
+          path: build/test-results/
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage
+          path: build/reports/jacoco/coverageReport/
+
+  ios:
+    name: iOS klibs
+    # The only job that can compile the Apple targets at all: Kotlin/Native silently skips them on
+    # a Linux or Windows host, so a green build elsewhere says nothing about iOS. This matters more
+    # here than it did in the client — the klibs published from this repository are what the app's
+    # iOS targets link against, and a broken one is discovered by whoever next builds the app.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v5
+      - run: ./gradlew compileKotlinIosArm64 iosSimulatorArm64Test --no-daemon

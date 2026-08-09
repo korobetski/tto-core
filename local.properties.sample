@@ -1,0 +1,13 @@
+# Copy to local.properties. Required by the Android Gradle Plugin, which this module applies for
+# its `androidNativeMain`-free Android target — there is no way to declare that target without it.
+#
+# CI has no local.properties; `android-actions/setup-android` sets ANDROID_HOME instead, which AGP
+# falls back to.
+#
+# Windows: both the drive colon and the backslashes must be escaped, otherwise the Android tasks
+# fail with PropertyEscape. Use a single LF at end of line.
+#   sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+#
+# macOS / Linux:
+#   sdk.dir=/Users/<you>/Library/Android/sdk
+sdk.dir=

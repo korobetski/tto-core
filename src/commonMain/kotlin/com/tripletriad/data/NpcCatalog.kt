@@ -36,20 +36,54 @@ data class NpcCatalog(
         collection(collection).firstOrNull { it.iconId == iconId }
 
     /**
-     * The opponents challengeable at [hour], in the order the opponent list shows them.
+     * The opponents challengeable at [hour] by a character of [level], in list order.
      *
      * `NPCs.toListCollection()` sorts on `difficulty`, then `matchFee`, then `name`
      * (`NPCs.as:1141`) and then filters by availability. Both are reproduced; the availability test
      * is not — see [com.tripletriad.model.Availability] for why the original's cannot work.
      *
+     * ### The level gate, which the original does not have
+     *
+     * `PVEScreen` lists every opponent in the table from the first match onward, and the ff14 table
+     * runs from difficulty 1 to **19**. A new character is shown sixty opponents, has no way to
+     * tell which of them are worth attempting, and the fee is charged either way — so the honest
+     * reading of that list is that it is unsorted advice at best.
+     *
+     * The rule is [LEVEL_REACH] above the character's own level: at level 1 the five easiest are
+     * open, and each level opens what the last one made plausible. **One** ahead rather than none,
+     * because a list with nothing above your weight is a list with nothing to aim at.
+     *
+     * Note the ff8 table declares `difficulty` **0 for all twenty-five of its opponents** — it is a
+     * field the FF8 data never filled in — so this gate is inert there and that collection behaves
+     * exactly as it did. That is the right outcome by accident rather than by design, and it is
+     * recorded here so a later pass that fills those numbers in knows it is turning a gate on.
+     *
      * @param hour wall-clock hour, 0..23. Injected rather than read from a clock so the list is
      *   testable, which is the same reason nothing else in this module reads one.
+     * @param level the character's level. See [com.tripletriad.model.GameSave.level].
      */
-    fun available(collection: CardCollection, hour: Int): List<Npc> =
+    fun available(collection: CardCollection, hour: Int, level: Int): List<Npc> =
         collection(collection)
-            .filter { it.availability.isOpenAtHour(hour) }
+            .filter { it.availability.isOpenAtHour(hour) && it.isOpenAtLevel(level) }
             .sortedWith(compareBy({ it.difficulty }, { it.matchFee }, { it.nameKey.lowercase() }))
+
+    /**
+     * How many of [collection] are open at [hour] but held back by [level].
+     *
+     * What the opponent list says under itself, so a filtered list reads as filtered rather than as
+     * a short table. Counted over the same availability test as [available] — an opponent who is
+     * simply not around at this hour is not "locked", and saying so would send the player looking
+     * for a level that would not produce them.
+     */
+    fun lockedByLevel(collection: CardCollection, hour: Int, level: Int): Int =
+        collection(collection)
+            .count { it.availability.isOpenAtHour(hour) && !it.isOpenAtLevel(level) }
+
+    private fun Npc.isOpenAtLevel(level: Int): Boolean = difficulty <= level + LEVEL_REACH
 }
+
+/** How far above their own level a character may reach. See [NpcCatalog.available]. */
+private const val LEVEL_REACH = 1
 
 /** Parses the NPC catalog. Split from its loader for the same reason [CardCatalogParser] is. */
 object NpcCatalogParser {

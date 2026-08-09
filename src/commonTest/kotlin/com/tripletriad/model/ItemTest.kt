@@ -116,11 +116,13 @@ class ItemTest {
         assertEquals("booster_pack_icon", BoosterItem(BoosterType.BRONZE).iconId)
         assertEquals("beast_booster", BoosterItem(BoosterType.BEAST).iconId)
         assertEquals("STR_BEAST_BOOSTER", BoosterType.BEAST.nameKey)
-        assertEquals("STR_BEAST_BOOSTER_DESC", BoosterType.BEAST.descriptionKey)
+        // `APP_`, not `STR_`: `BoosterItem.as:51` asks for `STR_BEAST_BOOSTER_DESC` and no bundle
+        // in the original defines it, so the sentence is the port's — see `descriptionKey`.
+        assertEquals("APP_BEAST_BOOSTER_DESC", BoosterType.BEAST.descriptionKey)
         assertEquals("potionItem", PotionItem(PotionType.XP).iconId)
         assertEquals("STR_XP_BOOST", PotionType.XP.nameKey)
-        assertEquals("STR_SMALL_MGP_BOOST_DESC", PotionType.SMALL_MGP.descriptionKey)
-        assertEquals("STR_CARD_ITEM_DESC", CardItem(1).descriptionKey)
+        assertEquals("APP_SMALL_MGP_BOOST_DESC", PotionType.SMALL_MGP.descriptionKey)
+        assertEquals("APP_CARD_ITEM_DESC", CardItem(1).descriptionKey)
         // The icon needs the card's rarity, which only the catalog knows.
         val card = Card(1, "ff14_", "STR_FF14_CARD_1", "Dodo", 4, 4, 4, 4, rarity = 3)
         assertEquals("card_r3_icon", CardItem(1).iconFor(card))

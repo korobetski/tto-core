@@ -1,0 +1,76 @@
+# Tag, and the artifact exists.
+#
+#   git tag -a v0.2.0 -m "..." && git push origin v0.2.0
+#
+# The version published is the tag with its `v` removed, passed to the build as `-PcoreVersion`.
+# Nothing in the repository states a released version, so the tag and the artifact cannot come to
+# disagree about what `v0.2.0` is.
+#
+# ### Publishing is one-way
+#
+# GitHub Packages will not overwrite a released version, and a version that has been resolved once
+# is in somebody's dependency cache regardless. There is no un-publishing a bad build — the only
+# remedy is another version. That is why the gate below runs in the same job, immediately before
+# the upload, rather than being taken on trust from a green run on `main`: a tag can be placed on
+# any commit, including one that was never on `main`.
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    # **macOS, and it has to be.** Kotlin/Native cross-compiles nothing: the `iosArm64` and
+    # `iosSimulatorArm64` klibs can only be produced on a Mac, and a `publish` run on Linux would
+    # succeed while quietly omitting them. The root module metadata would then advertise a library
+    # with no Apple variants, and the failure would surface in the client repository, on the one
+    # target that is only ever built in CI.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      # For the Android target. compileSdk is 37 and there is no local.properties on CI.
+      - uses: android-actions/setup-android@v4
+
+      - name: Derive the version from the tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # The gate, on the tagged commit, in the job that publishes. Everything: ktlint, detekt, the
+      # common tests on both host targets, and the coverage floor that `check` depends on.
+      - name: Build and test
+        run: ./gradlew build --no-daemon -PcoreVersion=${{ steps.version.outputs.value }}
+
+      - name: Publish
+        run: ./gradlew publish --no-daemon -PcoreVersion=${{ steps.version.outputs.value }}
+        env:
+          # Read by the `GitHubPackages` repository in build.gradle.kts. The built-in token is
+          # scoped to this repository and expires with the job, so no long-lived credential has to
+          # exist anywhere for a release to happen.
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summarise
+        run: |
+          {
+            echo "### com.tripletriad:core:${{ steps.version.outputs.value }}"
+            echo
+            echo "Consumers, in order: this repository's tag, then \`libs.versions.toml\` in"
+            echo "\`AS3-Triple-Triad\` and in \`tto-server\`."
+          } >> "$GITHUB_STEP_SUMMARY"

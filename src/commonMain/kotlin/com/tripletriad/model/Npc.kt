@@ -34,8 +34,15 @@ enum class NpcLevel(val modifier: Int) {
     EXPERT(5),
     ;
 
-    /** i18n key for the label shown in the opponent list. */
-    val labelKey: String get() = "STR_NPC_LEVEL_$name"
+    /**
+     * i18n key for the label shown in the opponent list.
+     *
+     * `APP_` rather than the `STR_NPC_LEVEL_*` the `@SerialName`s use, because **no bundle defines
+     * those** — the original wrote them into `npcs.json` as level identifiers and never gave them a
+     * translation, so the opponent list drew `STR_NPC_LEVEL_AVERAGE` at 25 of its 60 rows. The
+     * serial names stay verbatim; only what is shown moved.
+     */
+    val labelKey: String get() = "APP_NPC_LEVEL_$name"
 
     /**
      * XP for a win, a draw and a loss.

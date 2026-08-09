@@ -1,0 +1,60 @@
+# The engine's dependencies, and nothing else.
+#
+# This catalog is a **subset** of the client's (AS3-Triple-Triad), carrying only the entries this
+# module actually uses. That is the point of the module: no Compose, no UI, no resource bundle, no
+# platform I/O — so none of the entries that serve those belong here either.
+#
+# ### The versions that must agree across three repositories
+#
+# `kotlin`, `serializationJson` and `coroutines` are consumed by the client and by tto-server, and
+# a Kotlin library's metadata cannot be read by a consumer on an older language version. So the
+# order of a Kotlin upgrade is fixed: here first, published, then the two consumers. The reverse —
+# a consumer moving first — is the version that fails, and it fails at *link* time on a target that
+# is often only built in CI.
+[versions]
+agp = "9.3.1"
+kotlin = "2.4.10"
+serializationJson = "1.11.0"
+coroutines = "1.11.0"
+
+# KotlinCrypto, for the two primitives the peer handshake needs and Kotlin Multiplatform has no
+# common answer for: SHA-256 and a random source that is safe to commit to. Both publish for every
+# target declared here, including the two iOS ones.
+kotlincryptoHash = "0.8.0"
+kotlincryptoRand = "0.6.0"
+
+# **Held at 12.1.2 on purpose**, matching the client. 14.2.0 bundles a ktlint whose
+# parameter-list rules disagree with the shared `.editorconfig`, and taking it would mean
+# reformatting the codebase or fighting the tool with suppressions. It is a linter, not a shipped
+# dependency.
+ktlintPlugin = "12.1.2"
+detekt = "1.23.8"
+
+androidCompileSdk = "37"
+androidMinSdk = "24"
+
+[libraries]
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+# `runTest`, so `commonTest` can exercise suspending code. `runBlocking` exists on JVM and Native
+# but is not declared in commonMain.
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+# `CardRepository` guards its cache with `sync.Mutex`, so this is a direct dependency and says so.
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serializationJson" }
+
+# SHA-256, for the nonce commitment and the five hand commitments. Written by hand it would be 150
+# lines of bit twiddling that has to be right on every target; taken from a library it is one line
+# and someone else's test vectors.
+kotlincrypto-sha2 = { module = "org.kotlincrypto.hash:sha2", version.ref = "kotlincryptoHash" }
+# A cryptographically secure random. `kotlin.random.Random` is not one — it is a seeded PRNG, and a
+# guessable nonce makes a commitment worthless.
+kotlincrypto-rand = { module = "org.kotlincrypto.random:crypto-rand", version.ref = "kotlincryptoRand" }
+
+[plugins]
+# The KMP-aware Android library plugin. `com.android.library` cannot be applied next to Kotlin
+# Multiplatform under AGP 9.
+androidKmpLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }

@@ -128,7 +128,7 @@ class NpcCatalogTest {
     /** `NPCs.toListCollection()` sorts on difficulty, then match fee, then name. */
     @Test
     fun theAvailableListIsSortedAsTheAs3ListIs() {
-        val available = catalog.available(CardCollection.FF14, hour = 21)
+        val available = catalog.available(CardCollection.FF14, hour = 21, level = ANY_LEVEL)
 
         assertEquals(listOf("tt-master", "tratchoum"), available.map { it.iconId })
     }
@@ -138,13 +138,43 @@ class NpcCatalogTest {
         // Trachtoum runs 20:00-08:00, so it is absent at noon and present at 23:00.
         assertEquals(
             listOf("tt-master"),
-            catalog.available(CardCollection.FF14, hour = 12).map {
+            catalog.available(CardCollection.FF14, hour = 12, level = ANY_LEVEL).map {
                 it.iconId
             },
         )
         assertTrue(
-            catalog.available(CardCollection.FF14, hour = 23).any { it.iconId == "tratchoum" },
+            catalog.available(CardCollection.FF14, hour = 23, level = ANY_LEVEL)
+                .any { it.iconId == "tratchoum" },
         )
+    }
+
+    /**
+     * The level gate: difficulty at most one above the character's own level.
+     *
+     * The fixture holds a difficulty-1 and a difficulty-5 opponent, so the boundary is walkable —
+     * level 4 is the first that reaches 5, and level 3 is the last that does not.
+     */
+    @Test
+    fun anOpponentTooHardForTheCharactersLevelIsNotListed() {
+        fun icons(level: Int) =
+            catalog.available(CardCollection.FF14, hour = 23, level = level).map { it.iconId }
+
+        assertEquals(listOf("tt-master"), icons(level = 1), "a new character sees the easiest")
+        assertEquals(listOf("tt-master"), icons(level = 3), "and still not the difficulty-5 one")
+        assertEquals(
+            listOf("tt-master", "tratchoum"),
+            icons(level = 4),
+            "level 4 reaches difficulty 5",
+        )
+    }
+
+    /** What the list says under itself. Counted over the same window test — see `lockedByLevel`. */
+    @Test
+    fun theOnesHeldBackAreCounted() {
+        assertEquals(1, catalog.lockedByLevel(CardCollection.FF14, hour = 23, level = 1))
+        assertEquals(0, catalog.lockedByLevel(CardCollection.FF14, hour = 23, level = 4))
+        // Trachtoum is out of its window at noon, so it is not "locked" — it is simply not around.
+        assertEquals(0, catalog.lockedByLevel(CardCollection.FF14, hour = 12, level = 1))
     }
 
     /** `ignoreUnknownKeys`, so a field this build does not know about does not break parsing. */
@@ -171,3 +201,11 @@ class NpcCatalogTest {
         assertEquals(Availability.Always, npc.availability)
     }
 }
+
+/**
+ * A level high enough that [NpcCatalog.available]'s gate cannot bite.
+ *
+ * The tests that pass it are about the **hour** window or about a named opponent, and would
+ * otherwise be asserting the level rule by accident. The gate has its own cases above.
+ */
+private const val ANY_LEVEL: Int = 99

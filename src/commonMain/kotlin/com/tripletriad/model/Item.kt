@@ -61,8 +61,15 @@ enum class PotionType(val modifier: BoonModifier) {
     /** `PotionItem.as:35` — `i18n.gettext('STR_' + _potionType)`. */
     val nameKey: String get() = "STR_$as3Name"
 
-    /** `PotionItem.as:37`. */
-    val descriptionKey: String get() = "STR_${as3Name}_DESC"
+    /**
+     * `PotionItem.as:37` asks for `STR_<type>_DESC` and **no bundle in the original defines one** —
+     * not `en_US`, not any of the other three. The AS3 shop therefore drew the raw key under every
+     * potion it sold, and so did this port until the sentences were written for it.
+     *
+     * `APP_` rather than `STR_`, for the reason `APP_MATCHES` carries: a key the port authors is
+     * app-owned whatever the original happened to ask for it by.
+     */
+    val descriptionKey: String get() = "APP_${as3Name}_DESC"
 
     /** The AS3 constant's value, which the serial name also uses. */
     private val as3Name: String
@@ -123,8 +130,8 @@ enum class BoosterType(val pool: List<Int>, val iconId: String) {
     /** `BoosterItem.as:49` — `i18n.gettext('STR_' + _boosterType)`. */
     val nameKey: String get() = "STR_$as3Name"
 
-    /** `BoosterItem.as:51`. */
-    val descriptionKey: String get() = "STR_${as3Name}_DESC"
+    /** `BoosterItem.as:51`, app-owned for the reason [PotionType.descriptionKey] gives. */
+    val descriptionKey: String get() = "APP_${as3Name}_DESC"
 
     private val as3Name: String get() = "${name}_BOOSTER"
 }
@@ -217,7 +224,7 @@ data class CardItem(
      */
     override val iconId: String get() = "card_r1_icon"
 
-    override val descriptionKey: String get() = "STR_CARD_ITEM_DESC"
+    override val descriptionKey: String get() = "APP_CARD_ITEM_DESC"
 
     /** `CardItem.as:25` — `value = _cardId * 4`. Later cards are worth more because ids ascend. */
     override val value: Int get() = cardId * MGP_PER_ID
