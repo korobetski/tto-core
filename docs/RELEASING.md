@@ -8,6 +8,11 @@ wrong the first time it was attempted end to end, on 2026-08-11, going from `cor
 Every trap below actually happened that day. None of them announced itself: the expensive ones were
 all silent, and several looked like success.
 
+> **Amended 2026-08-11, later the same day.** §7's parked open question is **resolved** — the client
+> now knows its own release number, so `TTO_CLIENT_VERSION` finally means what it reads as. The
+> workaround this document used to prescribe has become the wrong advice, so §7 and §8 are rewritten
+> rather than annotated.
+
 ---
 
 ## 1. Four numbers that are not the same number
@@ -18,8 +23,8 @@ More than half of the confusion came from here. Write these down before touching
 |---|---|---|---|
 | **Engine artifact** | `-PcoreVersion`, tag on `tto-core` | every engine release | `0.2.0` |
 | **Protocol** | `CURRENT_VERSION` in `AppVersion.kt` | only on a replay-affecting break | `1.0.0` |
-| **Server** | `version` in `tto-server/build.gradle.kts` | every server release | `0.1.1` |
-| **Client app** | `clientVersion` in `gradle.properties` | every app release | `1.0.2` |
+| **Server** | its **git tag** — nothing in the source | every server release | `v0.2.0` |
+| **Client app** | `clientVersion` in `gradle.properties` | every app release | `1.0.3` |
 
 The protocol version is the one that surprises people. It is what `GET /server` reports as
 `version` and `minimumClient`, and what the gate compares — so a perfectly current deployment
@@ -30,8 +35,25 @@ It was made worse by an accident of history: both consumers used to pin the engi
 entirely. If a version number looks familiar, check which of the four it is before concluding
 anything.
 
+The **client app** number is now readable from code as well as from the build: `:shared:buildVersion`
+generates `com.tripletriad.CLIENT_VERSION` from that one property, so the app can print which build
+it is — it is at the foot of the sign-in screen — and compare itself against a published one. Before
+that, `clientVersion` reached the APK's manifest and nothing else, which is what made §7 go wrong.
+
 > **Trap.** "Why does the server expect a client at 1.0.0?" is not a misconfiguration. It is the
 > protocol version, hard-coded in `:core`, and no environment variable changes it.
+
+The server is the odd one out, and deliberately so since 2026-08-11: **it has no version constant**.
+It used to, and it said `0.1.1` while `v0.1.2` through `v0.2.0` had all shipped — four releases of
+drift nothing caught, because nothing read it. The image is tagged from `github.ref_name`, the
+deployment pulls by digest, and `GET /server` reports the protocol version. So the constant fed
+nothing and was deleted rather than bumped; `tto-server/build.gradle.kts` says why where it used to
+be. To read what is deployed, read the tag.
+
+> **Trap, the other way round.** Two commits on `tto-server` are named `version 0.2.0` and neither
+> changes the server's version: one moves the `core` pin to `0.2.0`, the other hardens the deploy
+> script. They are named after the **engine**. This is the same confusion the table above exists to
+> prevent, committed into the history — check what a commit touched, not what it is called.
 
 ---
 
@@ -288,22 +310,43 @@ password, somewhere other than the machine that builds.
 
 ## 7. After the deploy
 
-`TTO_CLIENT_VERSION` and `TTO_CLIENT_DOWNLOAD_ANDROID` in `/srv/tto/.env` are what make the client's
-update notice appear, and they are easy to forget: `release` is omitted from `GET /server` when null,
-so a deployment that forgot them looks identical to one that has nothing to announce.
+`TTO_CLIENT_VERSION` and `TTO_CLIENT_DOWNLOAD_ANDROID` in `/srv/tto/.env` are what make the
+**server-sourced** update notice appear, and they are easy to forget: `release` is omitted from
+`GET /server` when null, so a deployment that forgot them looks identical to one that has nothing to
+announce. That silence is no longer total — see the note on the releases page below — but the
+deployment's own answer is still the one a player on that server gets first.
+
+**Set it to the app release you just published** — the same number as the tag, without the `v`:
 
 ```
-TTO_CLIENT_VERSION=1.0.0
-TTO_CLIENT_DOWNLOAD_ANDROID=https://github.com/korobetski/tto-client/releases/download/v1.0.2/tto-1.0.2.apk
+TTO_CLIENT_VERSION=1.0.3
+TTO_CLIENT_DOWNLOAD_ANDROID=https://github.com/korobetski/tto-client/releases/download/v1.0.3/tto-1.0.3.apk
 ```
 
-> **Open question, deliberately parked.** `Connectivity.kt` compares the announced
-> `release.version` against `CURRENT_VERSION` — the *protocol* version — not against the app's own
-> release number, which common code has no access to. So `TTO_CLIENT_VERSION=1.0.2` would show
-> "update available" to every client forever, including one already running 1.0.2. Until that is
-> resolved, set this to the **protocol** version. Fixing it properly means adding an
-> `expect val clientAppVersion` to `:shared`, fed by `BuildConfig` on Android and its equivalents
-> elsewhere. See §8.
+> **This changed on 2026-08-11, and the old advice is now the wrong advice.** Until that day
+> `Connectivity.kt` compared the announced `release.version` against `CURRENT_VERSION` — the
+> *protocol* version — because common code had no access to the app's own release number. So
+> `TTO_CLIENT_VERSION=1.0.2` showed "update available" to every client forever, including one
+> already running 1.0.2, and this document told you to put the **protocol** version here instead.
+>
+> Do not. With the protocol version in that variable the notice can now never fire: `1.0.0` is
+> older than every app that will ever read it. The comparison is against
+> `com.tripletriad.CLIENT_VERSION` now — see §1 — so the variable finally means what it reads as.
+>
+> The fix was expected to need an `expect val clientAppVersion` per host. It did not: the number is
+> generated from the one `clientVersion` property by `:shared:buildVersion`, so there is a single
+> implementation and no `BuildConfig` involved.
+
+**The client also asks GitHub directly**, once per launch, and that path never needed this variable:
+it reads `/releases/latest` on the public repository — no token, sixty requests an hour per address —
+maps the tag to a version and the `.apk` asset to a download. So a deployment that forgets these two
+lines is no longer silent: once a newer build is tagged, the notice appears anyway, sourced from the
+releases page. The deployment's answer takes precedence when it has one, because only a deployment
+can say "this build cannot be served at all" — and that refusal must not be replaced by a suggestion
+the player can dismiss.
+
+What the variable still buys is a deployment that wants to announce something **other** than the
+newest public release — a staged rollout, or a self-hosted server pinned to an older client.
 
 Also worth knowing: an outdated client can still *play*, because the game is offline-first and a PvE
 match is computed on the device. Nothing it does reaches the server — the gate covers every
@@ -315,10 +358,13 @@ update, carrying ids from before the renumbering; on a real deployment those nee
 
 ## 8. Parked work
 
-* **`clientAppVersion` in `:shared`** — the update notice cannot currently distinguish an app release
-  from a protocol release. See §7.
+* ~~**`clientAppVersion` in `:shared`**~~ — **done, 2026-08-11.** `:shared:buildVersion` generates
+  `com.tripletriad.CLIENT_VERSION` from `clientVersion`, and both update sources compare against it.
+  See §7 for what that changes operationally, and §1 for the number itself.
 * **A stable `latest` download URL** — GitHub's `/releases/latest/download/<asset>` works but needs a
-  fixed asset name, and only removes half the manual step: `TTO_CLIENT_VERSION` still has to move for
-  the notice to appear. Worth doing *after* §8.1, not before.
+  fixed asset name. Less pressing than it was: the client reads the releases page itself now, so the
+  manual `.env` step is no longer the only way a player hears about a release. Still worth doing for
+  the deployments that do set `TTO_CLIENT_DOWNLOAD_ANDROID`, which otherwise names one version
+  forever.
 * **detekt 2.x** — `1.23.8` emits a Gradle deprecation from inside `DetektPlugin.apply`
   (`ReportingExtension.file`), removed in Gradle 10. Not fixable from the build script.
