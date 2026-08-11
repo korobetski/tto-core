@@ -14,18 +14,48 @@ import kotlin.random.Random
  * `bluePlayer` on *both* branches (`:172`, `:176`) — the local player always sees their own hand
  * whatever the rule says.
  *
- * Visibility is recorded by **card id**, where the original records it by slot index. The two
- * differ once a card is played: an AS3 panel keeps its five slots forever and marks the played ones
- * by whether they have a tile, while [MatchState.hands] holds only the cards still in hand and
- * closes the gap. A slot index would therefore start naming a different card mid-match. Ids are
- * unique within a hand — [randomHand] draws without replacement and [Npc.randomHand] cannot repeat
- * a card either — so nothing is lost by the change.
+ * ### Why this is recorded by position and not by card id
+ *
+ * It **was** by card id, on the grounds that ids are unique within a hand — [randomHand] draws
+ * without replacement, and [Npc.randomHand] tops a hand up from a pool it removes from. That
+ * premise died with `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § 1: a card can be
+ * owned twice, so a deck can name it twice, so a hand can hold two of it.
+ *
+ * The failure it caused was silent and rule-visible. Under [OpenRule.THREE_OPEN] the rule takes
+ * three cards and collected their **ids into a set** — with a duplicate in hand that set holds two,
+ * and [visible] then showed **two cards or four, never three**. Nothing threw and nothing logged;
+ * the opponent simply saw the wrong number of cards.
+ *
+ * Positions bring back the problem the id-keyed version was written to avoid: an AS3 panel keeps
+ * its five slots forever, while [MatchState.hands] holds only the cards still in hand and closes
+ * the gap, so a position starts naming a different card the moment one is played. That is what
+ * [afterPlaying] is for, and [PlayResult.handIndex] is what a caller feeds it.
  */
-data class HandVisibility(val visibleCardIds: Set<Int>) {
-    fun isVisible(card: Card): Boolean = card.id in visibleCardIds
+data class HandVisibility(val visiblePositions: Set<Int>) {
+    /** Whether the card at [position] in the hand is face up. */
+    fun isVisible(position: Int): Boolean = position in visiblePositions
 
     /** The subset of [hand] the other side can see, in hand order. */
-    fun visible(hand: List<Card>): List<Card> = hand.filter(::isVisible)
+    fun visible(hand: List<Card>): List<Card> =
+        hand.filterIndexed { position, _ -> isVisible(position) }
+
+    /**
+     * The same visibility after the card at [position] has left the hand.
+     *
+     * The played position drops out and everything behind it shifts down one, because
+     * [MatchState.play] rebuilds the hand without it rather than leaving a hole. A caller that
+     * forgets this does not get an exception — it gets the wrong cards face up — which is why
+     * [PlayResult] carries the index rather than leaving each caller to find it.
+     */
+    fun afterPlaying(position: Int): HandVisibility = HandVisibility(
+        visiblePositions.mapNotNullTo(mutableSetOf()) {
+            when {
+                it < position -> it
+                it > position -> it - 1
+                else -> null
+            }
+        },
+    )
 
     companion object {
         /** `RULE_THREE_OPEN` reveals three of the five (`playerPanel.as:190`). */
@@ -48,10 +78,10 @@ data class HandVisibility(val visibleCardIds: Set<Int>) {
             random: Random = Random.Default,
         ): HandVisibility = when (rule) {
             OpenRule.NONE -> HIDDEN
-            OpenRule.ALL_OPEN -> HandVisibility(hand.map { it.id }.toSet())
+            OpenRule.ALL_OPEN -> HandVisibility(hand.indices.toSet())
             OpenRule.THREE_OPEN ->
                 HandVisibility(
-                    hand.shuffled(random).take(THREE_OPEN_COUNT).map { it.id }.toSet(),
+                    hand.indices.shuffled(random).take(THREE_OPEN_COUNT).toSet(),
                 )
         }
     }

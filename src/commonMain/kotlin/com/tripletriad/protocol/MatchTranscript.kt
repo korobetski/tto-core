@@ -41,8 +41,10 @@ import kotlinx.serialization.Serializable
  * @property collection which of the two card tables this profile is in.
  * @property opponentIconId the opponent, by icon id — **not** by `id`, which is not unique.
  * @property deck the five card ids brought to the match, in the order they were selected.
- * @property ownedCards every card id the profile owns. Read only under `RULE_RANDOM`, where the
- *   hand is drawn from the whole collection rather than the deck. **Temporary**: see above.
+ * @property ownedCards every card the profile owns, id to copies held. Read under `RULE_RANDOM`,
+ *   where the hand is drawn from the whole collection rather than the deck, and by the deck
+ *   affordability check — which needs counts and not a membership test, since a deck naming a card
+ *   twice needs two copies of it. **Temporary**: see above.
  * @property moves the player's own placements, in turn order. The opponent's are absent by design.
  */
 @Serializable
@@ -52,7 +54,7 @@ data class MatchTranscript(
     val collection: CardCollection,
     val opponentIconId: String,
     val deck: List<Int>,
-    val ownedCards: List<Int>,
+    val ownedCards: Map<Int, Int>,
     val moves: List<TranscriptMove>,
 )
 
@@ -155,5 +157,8 @@ enum class RejectionReason {
  * Bumping this invalidates stored transcripts, so it is bumped when the *engine* changes too, not
  * only when a field is added — a replay that reaches a different answer is a different format
  * whatever the fields look like. See `ReplayDeterminismTest`, whose goldens are the tripwire.
+ *
+ * **2** — `ownedCards` became id-to-copies, and a deck may no longer use more copies of a card than
+ * are owned. `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § 1.
  */
-const val TRANSCRIPT_VERSION: Int = 1
+const val TRANSCRIPT_VERSION: Int = 2

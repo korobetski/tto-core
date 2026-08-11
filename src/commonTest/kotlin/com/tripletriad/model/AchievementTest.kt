@@ -77,9 +77,12 @@ class AchievementTest {
 
     @Test
     fun cardAndMgpTiersMatchTheAs3Thresholds() {
-        assertTrue(AchievementCatalog["ac-td1"]!!.isEarnedBy(GameSave(cards = (1..10).toList())))
-        assertFalse(AchievementCatalog["ac-td2"]!!.isEarnedBy(GameSave(cards = (1..10).toList())))
-        assertTrue(AchievementCatalog["ac-td5"]!!.isEarnedBy(GameSave(cards = (1..110).toList())))
+        val ten = GameSave(cards = (1..10).associateWith { 1 })
+        val hundredAndTen = GameSave(cards = (1..110).associateWith { 1 })
+
+        assertTrue(AchievementCatalog["ac-td1"]!!.isEarnedBy(ten))
+        assertFalse(AchievementCatalog["ac-td2"]!!.isEarnedBy(ten))
+        assertTrue(AchievementCatalog["ac-td5"]!!.isEarnedBy(hundredAndTen))
         assertTrue(AchievementCatalog["ac-mp1"]!!.isEarnedBy(GameSave(mgp = 1_000)))
         assertTrue(AchievementCatalog["ac-mp5"]!!.isEarnedBy(GameSave(mgp = 1_000_000)))
         assertFalse(AchievementCatalog["ac-mp5"]!!.isEarnedBy(GameSave(mgp = 999_999)))
@@ -93,10 +96,14 @@ class AchievementTest {
         assertEquals(13, AchievementCatalog.BEAST_CARDS.size)
         assertEquals(BoosterType.BEAST.pool, AchievementCatalog.BEAST_CARDS)
 
-        val complete = GameSave(mode = CardCollection.FF14, cards = AchievementCatalog.BEAST_CARDS)
+        val complete = GameSave(
+            mode = CardCollection.FF14,
+            cards = AchievementCatalog.BEAST_CARDS.associateWith { 1 },
+        )
         assertTrue(AchievementCatalog["ac-fob"]!!.isEarnedBy(complete))
 
-        val oneShort = complete.copy(cards = AchievementCatalog.BEAST_CARDS.dropLast(1))
+        val oneShort =
+            complete.copy(cards = AchievementCatalog.BEAST_CARDS.dropLast(1).associateWith { 1 })
         assertFalse(AchievementCatalog["ac-fob"]!!.isEarnedBy(oneShort))
 
         val wrongMode = complete.copy(mode = CardCollection.FF8)
@@ -118,7 +125,10 @@ class AchievementTest {
     @Test
     fun progressForACardSetCountsWhatIsOwned() {
         val save =
-            GameSave(mode = CardCollection.FF14, cards = AchievementCatalog.BEAST_CARDS.take(6))
+            GameSave(
+                mode = CardCollection.FF14,
+                cards = AchievementCatalog.BEAST_CARDS.take(6).associateWith { 1 },
+            )
 
         val progress = AchievementCatalog["ac-fob"]!!.progressFor(save)
 
@@ -128,7 +138,10 @@ class AchievementTest {
 
     @Test
     fun progressOnTheWrongModeIsZeroRatherThanPartial() {
-        val save = GameSave(mode = CardCollection.FF8, cards = AchievementCatalog.BEAST_CARDS)
+        val save = GameSave(
+            mode = CardCollection.FF8,
+            cards = AchievementCatalog.BEAST_CARDS.associateWith { 1 },
+        )
 
         assertEquals(0, AchievementCatalog["ac-fob"]!!.progressFor(save).current)
     }

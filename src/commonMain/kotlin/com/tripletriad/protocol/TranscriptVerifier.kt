@@ -87,7 +87,12 @@ object TranscriptVerifier {
         // check that pure peer-to-peer could not make; without one it is the claimant's, which
         // proves only that the transcript is internally consistent.
         val owned = owner?.cards ?: transcript.ownedCards
-        val unowned = transcript.deck.filterNot { it in owned }
+        // Multiset containment, not membership. A deck naming a card twice needs two copies, and
+        // checking only that the id appears somewhere would let the rule be stated by the model and
+        // enforced by nobody — which is the arrangement this whole design exists to end. See
+        // `Deck.isAffordable` and § 1 of docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md.
+        val overdrawn = transcript.deck.groupingBy { it }.eachCount()
+            .filter { (id, used) -> used > (owned[id] ?: 0) }
 
         return when {
             npc == null -> rejected(
@@ -103,8 +108,12 @@ object TranscriptVerifier {
                 "this profile plays ${owner.mode}, the transcript claims ${transcript.collection}",
             )
 
-            unowned.isNotEmpty() ->
-                rejected(RejectionReason.DECK_NOT_OWNED, "deck holds unowned cards $unowned")
+            overdrawn.isNotEmpty() -> rejected(
+                RejectionReason.DECK_NOT_OWNED,
+                overdrawn.entries.joinToString(prefix = "deck uses more copies than are owned: ") {
+                    (id, used) -> "card $id used $used, owned ${owned[id] ?: 0}"
+                },
+            )
 
             else -> dealAndReplay(transcript, cards, npc, owned)
         }
@@ -121,7 +130,7 @@ object TranscriptVerifier {
         transcript: MatchTranscript,
         cards: CardCatalog,
         npc: Npc,
-        owned: List<Int>,
+        owned: Map<Int, Int>,
     ): MatchVerdict {
         val random = Random(transcript.seed)
 
@@ -232,7 +241,7 @@ object TranscriptVerifier {
      * takes the first *complete* deck, and five cards is complete, so the player's chosen five are
      * the ones dealt.
      */
-    private fun profileFor(transcript: MatchTranscript, owned: List<Int>): GameSave = GameSave(
+    private fun profileFor(transcript: MatchTranscript, owned: Map<Int, Int>): GameSave = GameSave(
         mode = transcript.collection,
         cards = owned,
         decks = listOf(Deck(SUBMITTED_DECK_NAME, transcript.deck)),

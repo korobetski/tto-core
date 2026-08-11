@@ -88,7 +88,7 @@ class AchievementRepositoryTest {
     fun aRewardDoesNotEnableAFurtherAchievement() {
         // Nine cards owned: ac-td1 wants ten. ac-tt3's reward would be the tenth *if* rewards
         // landed in the collection rather than the bag.
-        val save = GameSave(cards = (1..9).toList(), npcWins = mapOf("jonas" to 300))
+        val save = GameSave(cards = (1..9).associateWith { 1 }, npcWins = mapOf("jonas" to 300))
 
         val first = repository.credit(save, at = 100)
         assertTrue(first.earned.any { it.id == "ac-tt3" })

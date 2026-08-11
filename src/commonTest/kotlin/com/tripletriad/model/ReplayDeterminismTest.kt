@@ -137,7 +137,7 @@ class ReplayDeterminismTest {
             assertEquals(first, second, "seed $seed")
             assertEquals(
                 HandVisibility.THREE_OPEN_COUNT,
-                first.visibleCardIds.size,
+                first.visiblePositions.size,
                 "seed $seed reveals three",
             )
         }
@@ -250,7 +250,7 @@ class ReplayDeterminismTest {
     )
 
     private fun profile() = GameSave.new(createdAt = 0L).copy(
-        cards = (1..12).toList(),
+        cards = (1..12).associateWith { 1 },
         decks = listOf(Deck("Starter", listOf(1, 2, 3, 4, 5))),
     )
 

@@ -50,7 +50,7 @@ class PveMatchTest {
 
     private fun profile(
         mode: CardCollection = CardCollection.FF14,
-        cards: List<Int> = (1..12).toList(),
+        cards: Map<Int, Int> = (1..12).associateWith { 1 },
         decks: List<Deck> = listOf(Deck("Starter", listOf(1, 2, 3, 4, 5))),
     ) = GameSave.new(createdAt = 0L, mode = mode).copy(cards = cards, decks = decks)
 
@@ -123,7 +123,7 @@ class PveMatchTest {
     @Test
     fun onlyCompleteAndResolvableDecksArePlayable() {
         val save = profile(
-            cards = (1..12).toList(),
+            cards = (1..12).associateWith { 1 },
             decks = listOf(
                 Deck("Partial", listOf(1, 2)),
                 Deck("Full", listOf(1, 2, 3, 4, 5)),
@@ -287,7 +287,7 @@ class PveMatchTest {
     fun aDefaultOpponentRevealsNothing() {
         val match = PveMatches.assemble(profile(), opponent, catalog, Random(1))
 
-        assertTrue(match.setup.opponentVisibility.visibleCardIds.isEmpty())
+        assertTrue(match.setup.opponentVisibility.visiblePositions.isEmpty())
     }
 
     /** Under Random the deck is ignored and the hand comes from the whole collection. */
@@ -295,7 +295,7 @@ class PveMatchTest {
     fun aRandomOpponentMakesTheHandComeFromTheCollection() {
         val chaotic = opponent.copy(ruleKeys = listOf("RULE_RANDOM"))
         val deck = Deck("Deck", listOf(1, 2, 3, 4, 5))
-        val owner = profile(cards = (1..12).toList(), decks = listOf(deck))
+        val owner = profile(cards = (1..12).associateWith { 1 }, decks = listOf(deck))
         val outsideTheDeck = (6..12).toSet()
 
         val dealtOutside = seeds.count { seed ->
@@ -375,12 +375,29 @@ class PveMatchTest {
         // ff8_ has 30 cards, so these ids exist in ff14_ only.
         val impossible = profile(
             mode = CardCollection.FF8,
-            cards = listOf(31, 32, 33, 34, 35),
+            cards = listOf(31, 32, 33, 34, 35).associateWith { 1 },
             decks = emptyList(),
         )
 
         assertFailsWith<IllegalArgumentException> {
             PveMatches.assemble(impossible, opponent, catalog, Random(1))
         }
+    }
+
+    /**
+     * `RULE_RANDOM` draws five without replacement from the collection, and a copy is a card the
+     * draw can reach — a profile holding three of one card and two others can field a hand that a
+     * distinct-card list would have refused to deal. See `GameSave.ownedCardIds`.
+     */
+    @Test
+    fun aRandomHandCanBeDealtFromFewerThanFiveDistinctCards() {
+        val chaotic = opponent.copy(ruleKeys = listOf("RULE_RANDOM"))
+        val hoarder = profile(cards = mapOf(1 to 3, 2 to 1, 3 to 1), decks = emptyList())
+
+        val hand = PveMatches.assemble(hoarder, chaotic, catalog, Random(1))
+            .setup.state.hands.getValue(CardColor.BLUE)
+
+        assertEquals(HAND_SIZE, hand.size)
+        assertEquals(3, hand.count { it.id == 1 }, "all three copies are drawable")
     }
 }

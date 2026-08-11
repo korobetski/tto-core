@@ -28,7 +28,7 @@ class GameSaveTest {
         assertEquals("Kuplu Kopo", save.username)
         assertEquals(CardCollection.FF14, save.mode)
         assertEquals(0, save.admin)
-        assertEquals(listOf(1, 3, 6, 7, 10), save.cards)
+        assertEquals(mapOf(1 to 1, 3 to 1, 6 to 1, 7 to 1, 10 to 1), save.cards)
         assertEquals(1, save.decks.size)
         assertEquals("Starter deck", save.decks.first().name)
         assertEquals(listOf(1, 3, 6, 7, 10), save.decks.first().cards)
@@ -118,7 +118,7 @@ class GameSaveTest {
 
         assertEquals("Sparse", save.username)
         assertEquals(CardCollection.FF14, save.mode)
-        assertEquals(listOf(1, 3, 6, 7, 10), save.cards)
+        assertEquals(mapOf(1 to 1, 3 to 1, 6 to 1, 7 to 1, 10 to 1), save.cards)
         assertTrue(save.achievements.isEmpty())
     }
 
@@ -144,7 +144,7 @@ class GameSaveTest {
             mgp = -50,
             xp = -1,
             pvpXp = -1,
-            cards = listOf(7, 3, 3, 0, -2, 1),
+            cards = mapOf(7 to 1, 3 to 2, 0 to 4, -2 to 1, 1 to 0),
             bag = listOf(CardItem(1, 0), CardItem(2, 3)),
             decks = List(9) { Deck("deck $it") },
         ).sane()
@@ -152,7 +152,11 @@ class GameSaveTest {
         assertEquals(0, save.mgp)
         assertEquals(0L, save.xp)
         assertEquals(0L, save.pvpXp)
-        assertEquals(listOf(1, 3, 7), save.cards, "distinct, ascending, positive")
+        assertEquals(
+            mapOf(7 to 1, 3 to 2),
+            save.cards,
+            "positive ids held a positive number of times; a copy count is not a duplicate",
+        )
         assertEquals(listOf(CardItem(2, 3)), save.bag, "an empty stack is not an item")
         assertEquals(GameSave.MAX_DECKS, save.decks.size, "Save.as:31 caps decks at five")
     }
@@ -187,12 +191,22 @@ class GameSaveTest {
     }
 
     @Test
-    fun cardsAreASet() {
-        val save = GameSave(cards = listOf(1, 3)).withCard(2).withCard(2).withCard(1)
+    fun cardsAreAMultisetAndCopiesStack() {
+        val save = GameSave(cards = mapOf(1 to 1, 3 to 1)).withCard(2).withCard(2).withCard(1)
 
-        assertEquals(listOf(1, 2, 3), save.cards)
+        assertEquals(mapOf(1 to 2, 2 to 2, 3 to 1), save.cards)
+        assertEquals(2, save.copiesOf(2))
+        assertEquals(0, save.copiesOf(99))
         assertTrue(save.ownsCard(2))
         assertFalse(save.ownsCard(99))
+    }
+
+    /** One entry per copy, ascending — what `RULE_RANDOM` draws a hand from. */
+    @Test
+    fun ownedCardIdsRepeatsEachCopy() {
+        val save = GameSave(cards = mapOf(7 to 3, 2 to 1))
+
+        assertEquals(listOf(2, 7, 7, 7), save.ownedCardIds())
     }
 
     /** `PVEMatchScreen.as:110` keys `NPC_W` by the NPC's `iconID`, not by its id. */
@@ -346,5 +360,38 @@ class GameSaveTest {
 
         assertEquals(save.decks, decoded.decks)
         assertEquals(4, decoded.decks.size, "the unnamed filler slot is on disk too")
+    }
+
+
+    // ---- Deck affordability ------------------------------------------------
+
+    /** The rule copies exist for: a deck may name a card as many times as it is owned, no more. */
+    @Test
+    fun aDeckMayNameACardOnceMoreForEachCopyOwned() {
+        val deck = Deck("twins", listOf(7, 7, 3, 4, 5))
+        val owned = mapOf(3 to 1, 4 to 1, 5 to 1)
+
+        assertFalse(deck.isAffordable(owned + (7 to 1)), "one copy does not fill two slots")
+        assertTrue(deck.isAffordable(owned + (7 to 2)))
+        assertTrue(deck.isAffordable(owned + (7 to 3)), "a spare copy is not a problem")
+        assertEquals(2, deck.copiesUsed(7))
+    }
+
+    /** Totality: an id owned not at all is unaffordable rather than unconstrained. */
+    @Test
+    fun aDeckNamingAnUnownedCardIsNotAffordable() {
+        assertFalse(Deck("d", listOf(99)).isAffordable(emptyMap()))
+        assertTrue(Deck("empty", emptyList()).isAffordable(emptyMap()))
+    }
+
+    /**
+     * Decks are not simultaneous, so there is no budget across them — see [Deck.isAffordable].
+     */
+    @Test
+    fun twoDecksMayEachNameTheSingleCopyOwned() {
+        val owned = mapOf(7 to 1)
+
+        assertTrue(Deck("a", listOf(7)).isAffordable(owned))
+        assertTrue(Deck("b", listOf(7)).isAffordable(owned))
     }
 }

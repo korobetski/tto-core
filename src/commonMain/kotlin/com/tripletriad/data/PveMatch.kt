@@ -83,7 +83,10 @@ object PveMatches {
         val (rules, deck) = plan
         val cards = catalog.collection(profile.mode.prefix).associateBy { it.id }
         val blueDeck = resolve(deck, cards, "profile '${profile.username}' deck")
-        val collection = profile.cards.mapNotNull { cards[it] }
+        // One entry per *copy*, not per card: `RULE_RANDOM` draws five without replacement from
+        // this list, so a profile holding three copies of one card and two others can field a hand
+        // where a distinct-card list would refuse to. See `GameSave.ownedCardIds`.
+        val collection = profile.ownedCardIds().mapNotNull { cards[it] }
         val redHand = resolve(npc.randomHand(random), cards, "opponent '${npc.iconId}' hand")
 
         return PveMatch(
@@ -127,14 +130,21 @@ object PveMatches {
      * id naming no card in the profile's table would make [assemble] throw on "Play this deck", and
      * an unplayable row is better left off the list than offered and refused.
      *
+     * Affordability is checked too, and for the same reason resolvability is: a deck naming a card
+     * twice that the profile now holds one copy of is a deck [assemble] would deal and the server
+     * would refuse, and offering it would turn a rule into a rejection the player cannot act on. A
+     * stored deck can become unaffordable without being edited — nothing stops a copy being spent
+     * elsewhere — so this is a live condition rather than a stale one. See [Deck.isAffordable].
+     *
      * Indexed, and the index is the **save slot** rather than the position in this list: an unnamed
      * deck is labelled by its slot number ([DeckSelectorScreen]), so filtering out the incomplete
      * ones would otherwise rename the survivors.
      */
     fun playableDecks(profile: GameSave, catalog: CardCatalog): List<IndexedValue<Deck>> {
         val ids = catalog.collection(profile.mode.prefix).mapTo(mutableSetOf()) { it.id }
-        return profile.decks.withIndex()
-            .filter { (_, deck) -> deck.isComplete && ids.containsAll(deck.cards) }
+        return profile.decks.withIndex().filter { (_, deck) ->
+            deck.isComplete && ids.containsAll(deck.cards) && deck.isAffordable(profile.cards)
+        }
     }
 
     /**
@@ -152,7 +162,8 @@ object PveMatches {
      * which five cards it plays.
      */
     fun playerDeck(profile: GameSave): List<Int> =
-        profile.decks.firstOrNull { it.isComplete }?.cards ?: profile.cards.take(HAND_SIZE)
+        profile.decks.firstOrNull { it.isComplete }?.cards
+            ?: profile.ownedCardIds().take(HAND_SIZE)
 
     private fun resolve(ids: List<Int>, cards: Map<Int, Card>, what: String): List<Card> {
         val resolved = ids.mapNotNull { cards[it] }

@@ -62,6 +62,11 @@ sealed interface Requirement {
 
     /** Own [count] cards. `CARDS.length` — the Triple-decker tier. */
     data class CardsOwned(val count: Int) : Requirement {
+        // `size` on the map is the count of **distinct** cards, which is what this requirement
+        // means and must keep meaning: "own 50 cards" is a collection milestone, and paying it out
+        // for fifty copies of one common would be a different and worse achievement. Right here by
+        // construction rather than by accident, and said so because summing the values reads like
+        // the obvious fix.
         override fun progress(save: GameSave) = Progress(save.cards.size, count)
     }
 

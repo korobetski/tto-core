@@ -26,9 +26,14 @@ sealed interface ItemUse {
      * That is the original's behaviour and it is deliberate rather than an oversight:
      * `useBtnHandler` (`InventoryScreen.as:252-258`) opens the pack and pushes `new
      * CardItem(cardId).__toJSON()` onto `BAG`, leaving `CARDS` alone. Opening a pack therefore
-     * yields something the player can either *use* — which adds the card — or **sell**, which is
-     * the only sink for a duplicate the game has. Adding the card directly would silently delete
-     * that choice, and with it the resale value of every duplicate ever drawn.
+     * yields something the player can either *use* — which adds the card — or **sell**. Adding the
+     * card directly would silently delete that choice, and with it the resale value of every
+     * duplicate ever drawn.
+     *
+     * Selling used to be *the only* sink for a duplicate, and that is no longer true: a second copy
+     * is kept and can be played, so Use is now a real answer for a card already owned rather than a
+     * waste of it. See `GameSave.withCard` and § 1 of
+     * `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md`.
      */
     data class PackOpened(
         override val save: GameSave,
@@ -136,10 +141,10 @@ object Inventory {
      *   the AS3, and this is what using it can only have meant.
      * - Anything else is [ItemUse.NotUseable] and the profile is untouched.
      *
-     * A card already owned is still consumed, and [ItemUse.CardDrawn.wasNew] says so — the AS3 shop
-     * behaves the same way, and silently refunding would be a new rule. The inventory screen
-     * disables Use on a card already owned (`InventoryScreen.as:111`), which is where that is
-     * prevented rather than refunded.
+     * A card already owned is still consumed, and [ItemUse.CardDrawn.wasNew] says so — it now means
+     * "this is the first copy" rather than "this was not wasted". The AS3 inventory screen disables
+     * Use on a card already owned (`InventoryScreen.as:111`) because a second copy did nothing;
+     * that gate is removed with card copies, since a second copy is exactly what the player wants.
      *
      * @param random the booster draw. Injected so a drop is reproducible.
      */

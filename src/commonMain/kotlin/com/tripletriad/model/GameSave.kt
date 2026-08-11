@@ -2,6 +2,14 @@ package com.tripletriad.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonTransformingSerializer
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Win/loss record. `Save.DATAS.STATS` (`Save.as:32`). */
 @Serializable
@@ -111,12 +119,37 @@ data class Deck(
      * different order removes and re-adds, which is the same number of taps as the original's
      * tap-card-then-tap-slot.
      *
-     * A duplicate is allowed through: nothing in the original prevents the same card appearing
-     * twice in a deck either, and [Card] ids in a hand are not required to be distinct — see
-     * `RULE_SWAP`, which can produce a genuine duplicate mid-match.
+     * A duplicate is allowed through **here** and bounded elsewhere. It used to be unbounded, on
+     * the grounds that nothing in the original prevents the same card appearing twice in a deck
+     * either; that reasoning held only while a card could not be owned twice. It can now, so the
+     * rule is "no more copies than are owned" and it lives in [isAffordable] — this method has no
+     * profile to ask. See `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § 1.
+     *
+     * The looser statement is still true of a *hand*, which is a different thing: `RULE_SWAP` can
+     * produce a genuine duplicate mid-match whatever the deck was built from.
      */
     fun plusCard(cardId: Int): Deck =
         if (cards.size >= HAND_SIZE) this else copy(cards = cards + cardId)
+
+    /** How many times this deck names [cardId]. */
+    fun copiesUsed(cardId: Int): Int = cards.count { it == cardId }
+
+    /**
+     * True when this deck names no card more times than [owned] holds copies of it.
+     *
+     * Multiset containment, and the reason it is a function on [Deck] rather than a check in the
+     * editor: the server has to be able to ask the same question of a submitted deck, and a rule
+     * enforced only by the screen that builds decks is a rule enforced only by the client. See
+     * [com.tripletriad.protocol.TranscriptVerifier].
+     *
+     * **There is no budget across decks.** Two saved decks may each name the single copy owned;
+     * decks are not simultaneous, and a global budget would make saving one depend on the contents
+     * of the other seven.
+     *
+     * @param owned card id to copies held — [GameSave.cards].
+     */
+    fun isAffordable(owned: Map<Int, Int>): Boolean =
+        cards.groupingBy { it }.eachCount().all { (id, used) -> used <= (owned[id] ?: 0) }
 
     /** The same deck without the card at position [at]. Unchanged if there is none. */
     fun minusCardAt(at: Int): Deck =
@@ -164,8 +197,27 @@ data class GameSave(
     @SerialName("MODE") val mode: CardCollection = CardCollection.FF14,
     /** `0` or `1`. An AS3 `uint` used as a flag; kept as written. */
     @SerialName("ADMIN") val admin: Int = 0,
-    /** Card ids owned. The starter five are `Save.as:30`. */
-    @SerialName("CARDS") val cards: List<Int> = DEFAULT_CARDS,
+    /**
+     * Card id to **how many copies** are owned. The starter five are `Save.as:30`.
+     *
+     * A map and not a list of ids, which is what the AS3 stored and what this port carried until
+     * `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § 1 — a card can be owned several
+     * times, and a deck may not use more copies than are held ([Deck.isAffordable]).
+     *
+     * A count per card rather than a repeated id, because **two copies are indistinguishable**.
+     * [Card] is a value; nothing on it identifies an instance, and `captured()` returns a copy with
+     * the owner flipped and no identity of its own. Repeating the id would invent an identity
+     * nothing has a use for and make every read collapse it again.
+     *
+     * Counts are always positive — [sane] drops the rest, because a zero-copy entry is the same
+     * fact as no entry and holding both is how the two come to disagree.
+     *
+     * Reads the AS3's bare `[1, 3, 6]` as well as its own `{"1": 1, "3": 1}` — see
+     * [CardCopiesSerializer]. Written only in the latter form.
+     */
+    @SerialName("CARDS")
+    @Serializable(with = CardCopiesSerializer::class)
+    val cards: Map<Int, Int> = DEFAULT_COLLECTION,
     @SerialName("DECKS") val decks: List<Deck> = listOf(Deck(DEFAULT_DECK_NAME, DEFAULT_CARDS)),
     @SerialName("STATS") val stats: Stats = Stats(),
     /** The inventory. `Save.as:33` — a list of `Item.__toJSON()` objects. */
@@ -221,8 +273,20 @@ data class GameSave(
     /** True once the profile has earned [id]. */
     fun hasAchievement(id: String): Boolean = achievements.containsKey(id)
 
-    /** True once the profile owns [cardId]. */
-    fun ownsCard(cardId: Int): Boolean = cards.contains(cardId)
+    /** How many copies of [cardId] the profile holds, zero when it holds none. */
+    fun copiesOf(cardId: Int): Int = cards[cardId] ?: 0
+
+    /**
+     * True once the profile owns at least one [cardId].
+     *
+     * Kept alongside [copiesOf] rather than folded into it: a dozen call sites want the boolean,
+     * and nothing is gained by making each of them write the comparison.
+     */
+    fun ownsCard(cardId: Int): Boolean = copiesOf(cardId) > 0
+
+    /** The collection as one card per copy, ascending — what a hand may be drawn from. */
+    fun ownedCardIds(): List<Int> =
+        cards.entries.sortedBy { it.key }.flatMap { (id, copies) -> List(copies) { id } }
 
     /**
      * The same profile with derived fields brought back in line with their sources, and volumes of
@@ -239,8 +303,10 @@ data class GameSave(
         xp = xp.coerceAtLeast(0),
         pvpXp = pvpXp.coerceAtLeast(0),
         mgp = mgp.coerceAtLeast(0),
-        // Distinct and ascending, so the collection screen cannot show a card twice.
-        cards = cards.filter { it > 0 }.distinct().sorted(),
+        // Positive ids held a positive number of times. This used to read `.distinct().sorted()`,
+        // so that the collection screen could not show a card twice; a card owned twice is now a
+        // fact rather than a corruption, and the screen shows it as a count.
+        cards = cards.filterKeys { it > 0 }.filterValues { it > 0 },
         // Empty stacks are not items. The AS3 leaves them in the bag and draws a "0".
         bag = bag.filter { it.stack > 0 },
         decks = decks.take(MAX_DECKS),
@@ -272,9 +338,18 @@ data class GameSave(
     fun withPvpXp(amount: Long): GameSave =
         copy(pvpXp = pvpXp + amount).let { it.copy(rank = XpTable.rankFor(it.pvpXp)) }
 
-    /** Adds [cardId] to the collection. A no-op if it is already there — cards are a set. */
-    fun withCard(cardId: Int): GameSave =
-        if (ownsCard(cardId)) this else copy(cards = (cards + cardId).sorted())
+    /**
+     * Adds [copies] of [cardId] to the collection, stacking onto what is already held.
+     *
+     * This used to return the profile unchanged when the card was already owned, on the grounds
+     * that cards were a set. They are a multiset now, so a second copy is kept — which is what
+     * gives a duplicate any value at all. See `ItemUse.PackOpened` and § 1 of
+     * `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md`.
+     */
+    fun withCard(cardId: Int, copies: Int = 1): GameSave {
+        require(copies > 0) { "copies must be positive, was $copies" }
+        return copy(cards = cards + (cardId to copiesOf(cardId) + copies))
+    }
 
     /**
      * Records a win against an NPC, for the Triple Team achievements.
@@ -365,6 +440,9 @@ data class GameSave(
         /** `Save.as:30`. The same five ids seed the collection and the starter deck. */
         val DEFAULT_CARDS: List<Int> = listOf(1, 3, 6, 7, 10)
 
+        /** [DEFAULT_CARDS], one copy each — the shape [cards] holds. */
+        val DEFAULT_COLLECTION: Map<Int, Int> = DEFAULT_CARDS.associateWith { 1 }
+
         /**
          * A brand-new profile.
          *
@@ -383,5 +461,45 @@ data class GameSave(
             lastSave = createdAt,
             mode = mode,
         )
+    }
+}
+
+/**
+ * Reads [GameSave.cards] from either shape: the AS3's array of ids, or this build's id-to-copies
+ * object.
+ *
+ * ### Why the old shape is still read
+ *
+ * Because [GameSave]'s own contract says so — *"a save written by an older build still loads"* —
+ * and `CARDS` is the one field whose **shape** changed rather than its contents. Every other field
+ * gained a default and kept its type; this one went from `[1, 3, 6]` to `{"1": 1, "3": 1}` when a
+ * card became something you could own twice, and without this a profile written before that would
+ * fail to parse rather than load with one copy of everything.
+ *
+ * `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § 1 argues the change is free because it
+ * rides document 19's card reset, which voids every stored card id anyway. That is true of the
+ * release and not of this branch, and it would in any case be a poor reason to break a file format
+ * a test asserts. The cost is fifteen lines that can be deleted the day the reset lands.
+ *
+ * **A repeated id in the legacy form counts as a copy.** The AS3 never wrote one — `Save.as` stores
+ * each id once — but `[7, 7]` has exactly one sensible reading now and refusing it would be a
+ * parse failure over a file that says what it means.
+ *
+ * Writing is always the object form: there is one shape on disk going forward, and a serializer
+ * that emitted whichever form happened to round-trip would make the file's shape depend on its
+ * history.
+ */
+object CardCopiesSerializer :
+    JsonTransformingSerializer<Map<Int, Int>>(
+        MapSerializer(Int.serializer(), Int.serializer()),
+    ) {
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        if (element !is JsonArray) return element
+        val counts = mutableMapOf<String, Int>()
+        for (id in element) {
+            val key = id.jsonPrimitive.content
+            counts[key] = (counts[key] ?: 0) + 1
+        }
+        return JsonObject(counts.mapValues { (_, copies) -> JsonPrimitive(copies) })
     }
 }

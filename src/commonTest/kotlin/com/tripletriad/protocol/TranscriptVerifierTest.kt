@@ -223,12 +223,16 @@ class TranscriptVerifierTest {
      * the natural-looking shortcut and would consume the stream on blue's turns, making every
      * honest transcript fail to replay.
      */
-    private fun playHonestly(seed: Int): MatchTranscript {
+    private fun playHonestly(
+        seed: Int,
+        deck: List<Int> = DECK,
+        owned: Map<Int, Int> = OWNED,
+    ): MatchTranscript {
         val random = Random(seed)
         val profile = GameSave(
             mode = CardCollection.FF14,
-            cards = OWNED,
-            decks = listOf(Deck("test", DECK)),
+            cards = owned,
+            decks = listOf(Deck("test", deck)),
         )
         val match = PveMatches.assemble(profile, opponent, cards, random)
 
@@ -251,8 +255,8 @@ class TranscriptVerifierTest {
             seed = seed,
             collection = CardCollection.FF14,
             opponentIconId = opponent.iconId,
-            deck = DECK,
-            ownedCards = OWNED,
+            deck = deck,
+            ownedCards = owned,
             moves = moves,
         )
     }
@@ -290,7 +294,7 @@ class TranscriptVerifierTest {
         const val SEED = 20260807
 
         val DECK = listOf(1, 2, 3, 4, 5)
-        val OWNED = (1..12).toList()
+        val OWNED = (1..12).associateWith { 1 }
 
         /** Outside every hand: the deck is 1..5 and the opponent draws from 11..13 and 20..23. */
         const val CARD_NOT_IN_ANY_HAND = 39
@@ -300,5 +304,41 @@ class TranscriptVerifierTest {
 
         /** Five apiece. */
         const val DRAWN_SCORE = 5
+    }
+
+
+    /**
+     * Membership was not enough once a card could be owned twice: a deck naming it twice needs two
+     * copies, and checking only that the id appears somewhere would leave the rule to the client.
+     */
+    @Test
+    fun aDeckUsingMoreCopiesThanAreOwnedIsRejected() {
+        val honest = playHonestly(SEED)
+        val doubled = honest.deck.first()
+
+        assertRejected(
+            RejectionReason.DECK_NOT_OWNED,
+            honest.copy(deck = listOf(doubled, doubled) + honest.deck.drop(2)),
+        )
+    }
+
+    /** And is accepted once the second copy is actually held. */
+    @Test
+    fun aDeckUsingTwoCopiesIsAcceptedWhenTwoAreOwned() {
+        val doubled = DECK.first()
+        val transcript = playHonestly(
+            seed = SEED + 1,
+            deck = listOf(doubled, doubled) + DECK.drop(2),
+            owned = OWNED + (doubled to 2),
+        )
+        val profile = GameSave(
+            mode = CardCollection.FF14,
+            cards = transcript.ownedCards,
+            decks = listOf(Deck("test", transcript.deck)),
+        )
+
+        assertIs<MatchVerdict.Accepted>(
+            TranscriptVerifier.verify(transcript, cards, npcs, profile),
+        )
     }
 }
