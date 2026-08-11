@@ -110,9 +110,9 @@ object TranscriptVerifier {
 
             overdrawn.isNotEmpty() -> rejected(
                 RejectionReason.DECK_NOT_OWNED,
-                overdrawn.entries.joinToString(prefix = "deck uses more copies than are owned: ") {
-                    (id, used) -> "card $id used $used, owned ${owned[id] ?: 0}"
-                },
+                overdrawn.entries.joinToString(
+                    prefix = "deck uses more copies than are owned: ",
+                ) { (id, used) -> "card $id used $used, owned ${owned[id] ?: 0}" },
             )
 
             else -> dealAndReplay(transcript, cards, npc, owned)

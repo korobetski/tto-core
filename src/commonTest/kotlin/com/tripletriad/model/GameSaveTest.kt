@@ -362,7 +362,6 @@ class GameSaveTest {
         assertEquals(4, decoded.decks.size, "the unnamed filler slot is on disk too")
     }
 
-
     // ---- Deck affordability ------------------------------------------------
 
     /** The rule copies exist for: a deck may name a card as many times as it is owned, no more. */

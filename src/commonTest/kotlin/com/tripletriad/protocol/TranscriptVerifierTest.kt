@@ -1,9 +1,9 @@
 package com.tripletriad.protocol
 
 import com.tripletriad.data.CardCatalog
-import com.tripletriad.data.TEST_SETS
 import com.tripletriad.data.NpcCatalog
 import com.tripletriad.data.PveMatches
+import com.tripletriad.data.TEST_SETS
 import com.tripletriad.model.Card
 import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardColor
@@ -309,7 +309,6 @@ class TranscriptVerifierTest {
         /** Five apiece. */
         const val DRAWN_SCORE = 5
     }
-
 
     /**
      * Membership was not enough once a card could be owned twice: a deck naming it twice needs two

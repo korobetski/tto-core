@@ -1,8 +1,8 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.BoosterItem
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.BoosterType
+import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardItem
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.MiscItem

@@ -431,5 +431,4 @@ class PveMatchTest {
         assertEquals(HAND_SIZE, hand.size)
         assertEquals(3, hand.count { it.id == ff14(1) }, "all three copies are drawable")
     }
-
 }

@@ -1,8 +1,8 @@
 package com.tripletriad.model
 
 import com.tripletriad.data.CardCatalog
-import com.tripletriad.data.TEST_SETS
 import com.tripletriad.data.PveMatches
+import com.tripletriad.data.TEST_SETS
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
