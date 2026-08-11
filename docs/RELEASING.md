@@ -24,7 +24,7 @@ More than half of the confusion came from here. Write these down before touching
 | **Engine artifact** | `-PcoreVersion`, tag on `tto-core` | every engine release | `0.2.0` |
 | **Protocol** | `CURRENT_VERSION` in `AppVersion.kt` | only on a replay-affecting break | `1.0.0` |
 | **Server** | its **git tag** — nothing in the source | every server release | `v0.2.0` |
-| **Client app** | `clientVersion` in `gradle.properties` | every app release | `1.0.3` |
+| **Client app** | `clientVersion` in `gradle.properties` | every app release | `1.0.4` |
 
 The protocol version is the one that surprises people. It is what `GET /server` reports as
 `version` and `minimumClient`, and what the gate compares — so a perfectly current deployment
@@ -50,10 +50,19 @@ deployment pulls by digest, and `GET /server` reports the protocol version. So t
 nothing and was deleted rather than bumped; `tto-server/build.gradle.kts` says why where it used to
 be. To read what is deployed, read the tag.
 
-> **Trap, the other way round.** Two commits on `tto-server` are named `version 0.2.0` and neither
-> changes the server's version: one moves the `core` pin to `0.2.0`, the other hardens the deploy
-> script. They are named after the **engine**. This is the same confusion the table above exists to
-> prevent, committed into the history — check what a commit touched, not what it is called.
+> **Trap, the other way round: a commit named after a number it does not set.** Three commits on
+> `tto-server` are named `version 0.2.0` and **none** changes the server's version — one moves the
+> `core` pin to `0.2.0`, one hardens the deploy script, one deletes the constant described above.
+> They are named after the **engine**.
+>
+> `tto-client` did the same thing on the same day, and there it had a consequence: `3c48824` is
+> named `version 1.0.4` and touches neither `gradle.properties` nor `libs.versions.toml`, so the tag
+> `v1.0.4` shipped while the property still read `1.0.3`. The published APK was correct — the
+> workflow passes `-PclientVersion` from the tag, overriding the property — but every local build
+> disagreed with it, which is exactly what that property's own comment warns against.
+>
+> The habit is the problem, not either commit. **Check what a commit touched, not what it is
+> called**, and bump the property in the commit you name after it.
 
 ---
 
