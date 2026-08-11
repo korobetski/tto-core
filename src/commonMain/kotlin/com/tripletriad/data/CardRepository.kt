@@ -88,7 +88,7 @@ class BundledCardRepository(
     }
 
     override suspend fun all(collection: CardCollection): List<Card> =
-        catalog().collection(collection.prefix)
+        catalog().collection(collection)
 
     /**
      * Card [id] of [collection], or null if the table has no such index.
@@ -136,7 +136,7 @@ class BundledCardRepository(
  */
 class InMemoryCardRepository(private val cards: List<Card>) : CardRepository {
     override suspend fun all(collection: CardCollection): List<Card> =
-        cards.filter { it.collection == collection.prefix }
+        cards.filter { it.block == collection.block }
 
     override suspend fun byId(id: Int, collection: CardCollection): Card? =
         all(collection).firstOrNull { it.id == id }

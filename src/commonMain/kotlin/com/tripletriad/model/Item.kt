@@ -100,31 +100,31 @@ enum class PotionType(val modifier: BoonModifier) {
 @Serializable
 enum class BoosterType(val pool: List<Int>, val iconId: String) {
     @SerialName("BRONZE_BOOSTER")
-    BRONZE(listOf(4, 5, 8, 12, 27, 38), PACK_ICON),
+    BRONZE(listOf(260, 261, 264, 268, 283, 294), PACK_ICON),
 
     @SerialName("SILVER_BOOSTER")
-    SILVER(listOf(14, 15, 16, 17, 19, 50, 56, 57), PACK_ICON),
+    SILVER(listOf(270, 271, 272, 273, 275, 306, 312, 313), PACK_ICON),
 
     @SerialName("GOLD_BOOSTER")
-    GOLD(listOf(28, 29, 30, 34, 51, 58, 68, 76), PACK_ICON),
+    GOLD(listOf(284, 285, 286, 290, 307, 314, 324, 332), PACK_ICON),
 
     @SerialName("MITHRIL_BOOSTER")
-    MITHRIL(listOf(39, 108, 109, 113, 123, 52, 70, 72, 73), PACK_ICON),
+    MITHRIL(listOf(295, 364, 365, 369, 379, 308, 326, 328, 329), PACK_ICON),
 
     @SerialName("PLATINUM_BOOSTER")
-    PLATINUM(listOf(51, 55, 57, 63, 69, 71, 77, 80), PACK_ICON),
+    PLATINUM(listOf(307, 311, 313, 319, 325, 327, 333, 336), PACK_ICON),
 
     @SerialName("BEAST_BOOSTER")
-    BEAST(listOf(14, 15, 16, 17, 18, 27, 35, 36, 37, 82, 83, 117, 128), "beast_booster"),
+    BEAST(listOf(270, 271, 272, 273, 274, 283, 291, 292, 293, 338, 339, 373, 384), "beast_booster"),
 
     @SerialName("PRIMAL_BOOSTER")
-    PRIMAL(listOf(40, 41, 42, 43, 52, 53, 54, 55, 61, 97, 98, 137), "primal_booster"),
+    PRIMAL(listOf(296, 297, 298, 299, 308, 309, 310, 311, 317, 353, 354, 393), "primal_booster"),
 
     @SerialName("SCION_BOOSTER")
-    SCION(listOf(19, 122, 46, 48, 49, 50, 56, 59, 60, 138), "scion_booster"),
+    SCION(listOf(275, 378, 302, 304, 305, 306, 312, 315, 316, 394), "scion_booster"),
 
     @SerialName("GARLEAN_BOOSTER")
-    GARLEAN(listOf(31, 32, 47, 51, 64, 119), "garlean_booster"),
+    GARLEAN(listOf(287, 288, 303, 307, 320, 375), "garlean_booster"),
     ;
 
     /** `BoosterItem.as:49` — `i18n.gettext('STR_' + _boosterType)`. */

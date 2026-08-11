@@ -8,14 +8,15 @@ import kotlin.test.assertNull
 
 /** [MatchRecord] and [MatchResult]: building a row from a finished match, and the round trip. */
 class MatchRecordTest {
+    private val TEST_BLOCK = 1
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
 
     private fun card(id: Int) = Card(
-        id = id,
-        collection = "ff14_",
+        // Fixtures number their cards from 1; ids are global.
+        id = Card.idFor(TEST_BLOCK, id),
         nameKey = "STR_CARD_$id",
         name = "Card $id",
         top = 5,

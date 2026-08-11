@@ -438,7 +438,7 @@ data class GameSave(
         const val STARTING_MGP = 100
 
         /** `Save.as:30`. The same five ids seed the collection and the starter deck. */
-        val DEFAULT_CARDS: List<Int> = listOf(1, 3, 6, 7, 10)
+        val DEFAULT_CARDS: List<Int> = listOf(257, 259, 262, 263, 266)
 
         /** [DEFAULT_CARDS], one copy each — the shape [cards] holds. */
         val DEFAULT_COLLECTION: Map<Int, Int> = DEFAULT_CARDS.associateWith { 1 }

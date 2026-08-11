@@ -13,9 +13,10 @@ import kotlin.test.assertTrue
  * transitions, with no stage, no timers and no coroutines.
  */
 class MatchStateTest {
+    private val TEST_BLOCK = 1
     private fun card(id: Int, power: Int = 5) = Card(
-        id = id,
-        collection = "test_",
+        // Fixtures number their cards from 1; ids are global.
+        id = Card.idFor(TEST_BLOCK, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = power,
@@ -271,7 +272,7 @@ class MatchStateTest {
             hand(from = 11),
             rules = GameRules(order = OrderRule.ORDER),
         )
-        assertEquals(listOf(1), state.playableCards().map { it.id })
+        assertEquals(listOf(card(1).id), state.playableCards().map { it.id })
 
         val next = state.play(state.playableCards().single(), 0)
         assertEquals(listOf(11), next.playableCards().map { it.id })

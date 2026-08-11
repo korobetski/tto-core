@@ -1,6 +1,7 @@
 package com.tripletriad.model
 
 import com.tripletriad.data.CardCatalog
+import com.tripletriad.data.TEST_SETS
 import com.tripletriad.data.PveMatches
 import kotlin.random.Random
 import kotlin.test.Test
@@ -128,7 +129,7 @@ class ReplayDeterminismTest {
     /** `RULE_THREE_OPEN` reveals the same three cards for a seed. */
     @Test
     fun theOpenRuleRevealsTheSameCards() {
-        val hand = (1..HAND_SIZE).map { card(it, "ff14_") }
+        val hand = (1..HAND_SIZE).map { card(1, it) }
 
         for (seed in SEEDS) {
             val first = HandVisibility.forRule(OpenRule.THREE_OPEN, hand, Random(seed))
@@ -224,21 +225,20 @@ class ReplayDeterminismTest {
             "= ${score.blue}-${score.red}"
     }
 
-    private fun card(id: Int, collection: String) = Card(
-        id = id,
-        collection = collection,
-        nameKey = "STR_TEST_$id",
-        name = "Test $id",
-        top = (id % 9) + 1,
-        right = ((id + 3) % 9) + 1,
-        bottom = ((id + 5) % 9) + 1,
-        left = ((id + 7) % 9) + 1,
+    private fun card(block: Int, number: Int) = Card(
+        id = Card.idFor(block, number),
+        nameKey = "STR_TEST_$block-$number",
+        name = "Test $block-$number",
+        top = (number % 9) + 1,
+        right = ((number + 3) % 9) + 1,
+        bottom = ((number + 5) % 9) + 1,
+        left = ((number + 7) % 9) + 1,
         rarity = 1,
     )
 
     private val catalog = CardCatalog(
-        ff14 = (1..40).map { card(it, "ff14_") },
-        ff8 = (1..30).map { card(it, "ff8_") },
+        sets = TEST_SETS,
+        cards = (1..40).map { card(1, it) } + (1..30).map { card(2, it) },
     )
 
     private val opponent = Npc(
@@ -255,6 +255,7 @@ class ReplayDeterminismTest {
     )
 
     private companion object {
+
         /** Arbitrary, and fixed forever: the goldens below were recorded against it. */
         const val GOLDEN_SEED = 20260806
 

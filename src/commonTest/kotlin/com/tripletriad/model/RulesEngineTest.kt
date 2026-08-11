@@ -14,6 +14,7 @@ import kotlin.test.assertTrue
  * dispatcher. That is the point of extracting the domain model first.
  */
 class RulesEngineTest {
+    private val TEST_BLOCK = 1
     // ---- fixtures ---------------------------------------------------------
 
     private fun card(
@@ -23,8 +24,8 @@ class RulesEngineTest {
         bottom: Int = 5,
         left: Int = 5,
     ) = Card(
-        id = id,
-        collection = "test_",
+        // Fixtures number their cards from 1; ids are global.
+        id = Card.idFor(TEST_BLOCK, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = top,

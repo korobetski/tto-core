@@ -213,12 +213,15 @@ class InventoryTest {
     /** A duplicate is still consumed; the flag is how the UI knows to say "already owned". */
     @Test
     fun aDuplicateCardIsStillConsumedAndReportedAsNotNew() {
-        val item = CardItem(1)
+        val item = CardItem(GameSave.DEFAULT_CARDS.first())
         val save = Inventory.add(empty, item)
 
         val drawn = assertIs<ItemUse.CardDrawn>(Inventory.use(save, item))
 
-        assertTrue(1 in empty.cards, "card 1 is in the starter collection")
+        assertTrue(
+            GameSave.DEFAULT_CARDS.first() in empty.cards,
+            "the card is in the starter collection",
+        )
         assertEquals(false, drawn.wasNew)
         assertTrue(drawn.save.bag.isEmpty())
     }

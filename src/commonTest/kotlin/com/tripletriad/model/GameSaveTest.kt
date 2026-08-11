@@ -28,10 +28,10 @@ class GameSaveTest {
         assertEquals("Kuplu Kopo", save.username)
         assertEquals(CardCollection.FF14, save.mode)
         assertEquals(0, save.admin)
-        assertEquals(mapOf(1 to 1, 3 to 1, 6 to 1, 7 to 1, 10 to 1), save.cards)
+        assertEquals(GameSave.DEFAULT_COLLECTION, save.cards)
         assertEquals(1, save.decks.size)
         assertEquals("Starter deck", save.decks.first().name)
-        assertEquals(listOf(1, 3, 6, 7, 10), save.decks.first().cards)
+        assertEquals(GameSave.DEFAULT_CARDS, save.decks.first().cards)
         assertEquals(Stats(), save.stats)
         assertTrue(save.bag.isEmpty())
         assertEquals(Boons(), save.boons)
@@ -118,7 +118,7 @@ class GameSaveTest {
 
         assertEquals("Sparse", save.username)
         assertEquals(CardCollection.FF14, save.mode)
-        assertEquals(mapOf(1 to 1, 3 to 1, 6 to 1, 7 to 1, 10 to 1), save.cards)
+        assertEquals(GameSave.DEFAULT_COLLECTION, save.cards)
         assertTrue(save.achievements.isEmpty())
     }
 
@@ -276,10 +276,10 @@ class GameSaveTest {
 
     @Test
     fun collectionPrefixesRoundTrip() {
-        assertEquals(CardCollection.FF14, CardCollection.forPrefix("ff14_"))
-        assertEquals(CardCollection.FF8, CardCollection.forPrefix("ff8_"))
-        assertEquals(null, CardCollection.forPrefix("ff7_"))
-        assertEquals("ff8_", CardCollection.FF8.prefix)
+        assertEquals(CardCollection.FF14, CardCollection.forSlug("ff14"))
+        assertEquals(CardCollection.FF8, CardCollection.forSlug("ff8"))
+        assertEquals(null, CardCollection.forSlug("ff7"))
+        assertEquals(2, CardCollection.FF8.block)
     }
 
     // ---- Decks -----------------------------------------------------------

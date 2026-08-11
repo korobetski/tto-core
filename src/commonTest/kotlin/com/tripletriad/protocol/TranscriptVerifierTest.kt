@@ -1,6 +1,7 @@
 package com.tripletriad.protocol
 
 import com.tripletriad.data.CardCatalog
+import com.tripletriad.data.TEST_SETS
 import com.tripletriad.data.NpcCatalog
 import com.tripletriad.data.PveMatches
 import com.tripletriad.model.Card
@@ -32,6 +33,7 @@ import kotlin.test.assertNotEquals
  * must still count, or the design has bought integrity by taking the game away.
  */
 class TranscriptVerifierTest {
+    private val TEST_BLOCK = 1
 
     // ---- The honest case --------------------------------------------------
 
@@ -262,8 +264,8 @@ class TranscriptVerifierTest {
     }
 
     private fun card(id: Int) = Card(
-        id = id,
-        collection = "ff14_",
+        // Fixtures number their cards from 1; ids are global.
+        id = Card.idFor(TEST_BLOCK, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = (id % 9) + 1,
@@ -274,8 +276,8 @@ class TranscriptVerifierTest {
     )
 
     private val cards = CardCatalog(
-        ff14 = (1..40).map { card(it) },
-        ff8 = emptyList(),
+        sets = TEST_SETS,
+        cards = (1..40).map { card(it) },
     )
 
     private val opponent = Npc(

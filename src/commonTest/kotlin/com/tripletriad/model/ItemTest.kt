@@ -16,6 +16,9 @@ import kotlin.test.assertTrue
  * objects and a bag written by the original must still load.
  */
 class ItemTest {
+    /** A block-1 card id — the shipped `ff14` table, which every pack pool names. */
+    private fun ff14(number: Int) = Card.idFor(block = 1, number = number)
+
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -124,7 +127,7 @@ class ItemTest {
         assertEquals("APP_SMALL_MGP_BOOST_DESC", PotionType.SMALL_MGP.descriptionKey)
         assertEquals("APP_CARD_ITEM_DESC", CardItem(1).descriptionKey)
         // The icon needs the card's rarity, which only the catalog knows.
-        val card = Card(1, "ff14_", "STR_FF14_CARD_1", "Dodo", 4, 4, 4, 4, rarity = 3)
+        val card = Card(257, "STR_FF14_CARD_1", "Dodo", 4, 4, 4, 4, rarity = 3)
         assertEquals("card_r3_icon", CardItem(1).iconFor(card))
     }
 
@@ -143,12 +146,12 @@ class ItemTest {
     @Test
     fun boosterPoolsMatchTheAs3Constants() {
         assertEquals(9, BoosterType.entries.size)
-        assertEquals(listOf(4, 5, 8, 12, 27, 38), BoosterType.BRONZE.pool)
-        assertEquals(listOf(31, 32, 47, 51, 64, 119), BoosterType.GARLEAN.pool)
+        assertEquals(listOf(4, 5, 8, 12, 27, 38).map(::ff14), BoosterType.BRONZE.pool)
+        assertEquals(listOf(31, 32, 47, 51, 64, 119).map(::ff14), BoosterType.GARLEAN.pool)
         assertEquals(13, BoosterType.BEAST.pool.size)
         for (type in BoosterType.entries) {
             assertTrue(type.pool.isNotEmpty(), "$type has no pool")
-            assertTrue(type.pool.all { it > 0 }, "$type has a non-positive card id")
+            assertTrue(type.pool.all { it >= Card.FIRST_ID }, "$type has a legacy card id")
         }
     }
 

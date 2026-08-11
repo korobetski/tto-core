@@ -46,7 +46,7 @@ class AchievementTest {
             .filter { it.reward != null }
             .associate { it.id to it.reward }
 
-        assertEquals(mapOf("ac-tt3" to CardItem(75), "ac-wof5" to CardItem(79)), rewarded)
+        assertEquals(mapOf("ac-tt3" to CardItem(331), "ac-wof5" to CardItem(335)), rewarded)
     }
 
     @Test

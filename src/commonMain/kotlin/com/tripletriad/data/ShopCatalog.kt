@@ -67,25 +67,25 @@ object ShopCatalog {
         ShopOffer(BoosterItem(BoosterType.SCION), price = 1_152),
         ShopOffer(BoosterItem(BoosterType.PRIMAL), price = 3_280),
         ShopOffer(BoosterItem(BoosterType.GARLEAN), price = 2_160),
-        ShopOffer(CardItem(2), price = 120),
-        ShopOffer(CardItem(13), price = 150),
-        ShopOffer(CardItem(20), price = 200),
-        ShopOffer(CardItem(44), price = 1_000),
-        ShopOffer(CardItem(45), price = 1_200),
-        ShopOffer(CardItem(114), price = 14_400),
-        ShopOffer(CardItem(138), price = 20_000),
-        ShopOffer(CardItem(63), price = 400_000),
-        ShopOffer(CardItem(118), price = 200_000),
-        ShopOffer(CardItem(74), price = 1_000_000),
+        ShopOffer(CardItem(258), price = 120),
+        ShopOffer(CardItem(269), price = 150),
+        ShopOffer(CardItem(276), price = 200),
+        ShopOffer(CardItem(300), price = 1_000),
+        ShopOffer(CardItem(301), price = 1_200),
+        ShopOffer(CardItem(370), price = 14_400),
+        ShopOffer(CardItem(394), price = 20_000),
+        ShopOffer(CardItem(319), price = 400_000),
+        ShopOffer(CardItem(374), price = 200_000),
+        ShopOffer(CardItem(330), price = 1_000_000),
     )
 
     /** `FF8_SHOP` (`shopScreen.as:64-70`). */
     val ff8: List<ShopOffer> = listOf(
         ShopOffer(PotionItem(PotionType.MGP), price = 50),
         ShopOffer(PotionItem(PotionType.XP), price = 50),
-        ShopOffer(CardItem(32), price = 350),
-        ShopOffer(CardItem(37), price = 420),
-        ShopOffer(CardItem(45), price = 600),
+        ShopOffer(CardItem(544), price = 350),
+        ShopOffer(CardItem(549), price = 420),
+        ShopOffer(CardItem(557), price = 600),
     )
 
     /**

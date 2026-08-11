@@ -81,7 +81,7 @@ object PveMatches {
         forcedFlip: CoinFlip? = null,
     ): PveMatch {
         val (rules, deck) = plan
-        val cards = catalog.collection(profile.mode.prefix).associateBy { it.id }
+        val cards = catalog.collection(profile.mode).associateBy { it.id }
         val blueDeck = resolve(deck, cards, "profile '${profile.username}' deck")
         // One entry per *copy*, not per card: `RULE_RANDOM` draws five without replacement from
         // this list, so a profile holding three copies of one card and two others can field a hand
@@ -141,7 +141,7 @@ object PveMatches {
      * ones would otherwise rename the survivors.
      */
     fun playableDecks(profile: GameSave, catalog: CardCatalog): List<IndexedValue<Deck>> {
-        val ids = catalog.collection(profile.mode.prefix).mapTo(mutableSetOf()) { it.id }
+        val ids = catalog.collection(profile.mode).mapTo(mutableSetOf()) { it.id }
         return profile.decks.withIndex().filter { (_, deck) ->
             deck.isComplete && ids.containsAll(deck.cards) && deck.isAffordable(profile.cards)
         }
