@@ -40,7 +40,7 @@ group = "com.tripletriad"
 //
 // A property rather than a constant edited by hand, because the alternative is a tag and an
 // artifact that eventually disagree about what `v0.3.0` is, and nothing in the build would notice.
-version = providers.gradleProperty("coreVersion").getOrElse("0.1.1")
+version = providers.gradleProperty("coreVersion").getOrElse("0.2.0")
 
 kotlin {
     // 17, matching `:shared`. The server runs 21 and consumes this happily; the reverse would not
