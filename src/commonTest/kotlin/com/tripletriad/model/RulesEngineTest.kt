@@ -14,6 +14,8 @@ import kotlin.test.assertTrue
  * dispatcher. That is the point of extracting the domain model first.
  */
 class RulesEngineTest {
+    /** Fixtures live in block 1; ids are global, so a bare number is not one. */
+    private val testBlock = 1
     // ---- fixtures ---------------------------------------------------------
 
     private fun card(
@@ -23,8 +25,8 @@ class RulesEngineTest {
         bottom: Int = 5,
         left: Int = 5,
     ) = Card(
-        id = id,
-        collection = "test_",
+        // Fixtures number their cards from 1; ids are global.
+        id = Card.idFor(testBlock, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = top,
@@ -129,9 +131,9 @@ class RulesEngineTest {
         val weak = card(id = 1, top = 1, right = 1, bottom = 1, left = 1)
         val start = board(
             Triple(At.TOP_MID, weak, CardColor.RED),
-            Triple(At.MID_LEFT, weak.copy(id = 2), CardColor.RED),
-            Triple(At.MID_RIGHT, weak.copy(id = 3), CardColor.RED),
-            Triple(At.BOTTOM_MID, weak.copy(id = 4), CardColor.RED),
+            Triple(At.MID_LEFT, weak.copy(id = Card.idFor(testBlock, 2)), CardColor.RED),
+            Triple(At.MID_RIGHT, weak.copy(id = Card.idFor(testBlock, 3)), CardColor.RED),
+            Triple(At.BOTTOM_MID, weak.copy(id = Card.idFor(testBlock, 4)), CardColor.RED),
         )
         val strong = card(id = 5, top = 9, right = 9, bottom = 9, left = 9)
         val result = engine().resolve(start, At.CENTRE, strong, CardColor.BLUE)

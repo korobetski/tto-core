@@ -14,9 +14,11 @@ import kotlin.test.assertTrue
  * [game-rules.md](../../../../../../../docs/analysis/game-rules.md) § 13.
  */
 class MatchSetupTest {
+    /** Fixtures live in block 1; ids are global, so a bare number is not one. */
+    private val testBlock = 1
     private fun card(id: Int) = Card(
-        id = id,
-        collection = "test_",
+        // Fixtures number their cards from 1; ids are global.
+        id = Card.idFor(testBlock, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = 5,
@@ -169,8 +171,8 @@ class MatchSetupTest {
     fun theDefaultOpenRuleRevealsNothing() {
         val visibility = HandVisibility.forRule(OpenRule.NONE, redDeck, Random(1))
 
-        assertEquals(emptySet(), visibility.visibleCardIds)
-        assertTrue(redDeck.none(visibility::isVisible))
+        assertEquals(emptySet(), visibility.visiblePositions)
+        assertTrue(redDeck.indices.none(visibility::isVisible))
     }
 
     @Test
@@ -190,14 +192,16 @@ class MatchSetupTest {
                 visibility.visible(redDeck).size,
                 "seed $seed",
             )
-            assertTrue(visibility.visibleCardIds.all { it in redDeck.map { c -> c.id } })
+            assertTrue(visibility.visiblePositions.all { it in redDeck.indices })
         }
     }
 
     @Test
     fun threeOpenDoesNotAlwaysRevealTheSameThree() {
         val revealed = seeds
-            .map { HandVisibility.forRule(OpenRule.THREE_OPEN, redDeck, Random(it)).visibleCardIds }
+            .map {
+                HandVisibility.forRule(OpenRule.THREE_OPEN, redDeck, Random(it)).visiblePositions
+            }
             .distinct()
 
         assertTrue(revealed.size > 1, "the three are drawn, not fixed")
@@ -211,13 +215,37 @@ class MatchSetupTest {
     fun visibilitySurvivesTheHandShrinking() {
         val visibility = HandVisibility.forRule(OpenRule.THREE_OPEN, redDeck, Random(5))
         val shown = visibility.visible(redDeck)
-        val afterPlaying = redDeck.drop(1)
 
-        assertEquals(
-            shown.filter { it in afterPlaying },
-            visibility.visible(afterPlaying),
-            "the same cards stay revealed",
-        )
+        // Every slot in turn, not just the first: the played card may be in front of a revealed
+        // one, behind it, or be it, and the three shift differently.
+        for (played in redDeck.indices) {
+            val remaining = redDeck.filterIndexed { at, _ -> at != played }
+
+            assertEquals(
+                shown.filterIndexed { at, _ -> redDeck.indexOf(shown[at]) != played },
+                visibility.afterPlaying(played).visible(remaining),
+                "the same cards stay revealed after slot $played is played",
+            )
+        }
+    }
+
+    /**
+     * The regression that made positions necessary: with two copies of one card in hand, an
+     * id-keyed visibility collapsed them into one entry and revealed two cards or four.
+     */
+    @Test
+    fun threeOpenRevealsThreeEvenWhenTheHandHoldsDuplicates() {
+        val twins = listOf(redDeck[0], redDeck[0], redDeck[1], redDeck[1], redDeck[2])
+
+        for (seed in seeds) {
+            val visibility = HandVisibility.forRule(OpenRule.THREE_OPEN, twins, Random(seed))
+
+            assertEquals(
+                HandVisibility.THREE_OPEN_COUNT,
+                visibility.visible(twins).size,
+                "seed $seed",
+            )
+        }
     }
 
     // ---- Coin flip --------------------------------------------------------
@@ -475,8 +503,8 @@ class MatchSetupTest {
         val red = setup.state.hands[CardColor.RED].orEmpty()
 
         assertEquals(
-            red.map { it.id }.toSet(),
-            setup.opponentVisibility.visibleCardIds,
+            red.indices.toSet(),
+            setup.opponentVisibility.visiblePositions,
             "the swapped-in card must be visible too",
         )
     }

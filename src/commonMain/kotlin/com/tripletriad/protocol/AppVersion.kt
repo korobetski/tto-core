@@ -91,8 +91,18 @@ data class AppVersion(
  * Kept beside the format version it moves with rather than read from a build file, so that a
  * `:core` artifact answers the question by itself — the server has no access to the client's Gradle
  * files, and a number it had to be told would be a number that could be wrong.
+ *
+ * ### 1.0.0, and why the next strands must not bump it again
+ *
+ * The major went to 1 for card copies: the save's `CARDS` changed shape, the transcript gained a
+ * field, and `HandVisibility` changed what the Open rule reveals — a replay change by the
+ * definition above. `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § Order of work calls
+ * for **one** major bump across all of 18, 19 and 20, and this is it. The strands still to land —
+ * global card ids, the set model, the per-app gate — are part of the same break and ride this
+ * number. Bumping again for each would be four gates and four windows in which a client and a
+ * server can be wrong about each other, which is the thing the gate exists to prevent.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(0, 1, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(1, 0, 0)
 
 /**
  * The header both sides put the version in.

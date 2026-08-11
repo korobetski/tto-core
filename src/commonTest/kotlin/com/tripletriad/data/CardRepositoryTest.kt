@@ -18,16 +18,21 @@ import kotlin.test.assertTrue
  * interface with two implementations that behave differently is worse than one implementation.
  */
 class CardRepositoryTest {
+    /** A block-2 card id. Fixtures number their cards from 1; ids are global. */
+    private fun ff8(number: Int) = Card.idFor(block = 2, number = number)
+
+    /** A block-1 card id. Fixtures number their cards from 1; ids are global. */
+    private fun ff14(number: Int) = Card.idFor(block = 1, number = number)
+
     private fun card(
-        id: Int,
-        collection: String = "ff14_",
-        name: String = "Card $id",
+        number: Int,
+        block: Int = 1,
+        name: String = "Card $number",
         rarity: Int = 1,
         type: CardType? = null,
     ) = Card(
-        id = id,
-        collection = collection,
-        nameKey = "STR_CARD_$id",
+        id = Card.idFor(block, number),
+        nameKey = "STR_CARD_$number",
         name = name,
         top = 1,
         right = 2,
@@ -44,10 +49,10 @@ class CardRepositoryTest {
         card(4, name = "Spriggan", rarity = 5, type = CardType.PRIMALS),
     )
     private val ff8 = listOf(
-        card(1, collection = "ff8_", name = "Geezard", rarity = 1),
-        card(2, collection = "ff8_", name = "Funguar", rarity = 3, type = CardType.FIRE),
+        card(1, block = 2, name = "Geezard", rarity = 1),
+        card(2, block = 2, name = "Funguar", rarity = 3, type = CardType.FIRE),
     )
-    private val catalog = CardCatalog(ff14 = ff14, ff8 = ff8)
+    private val catalog = CardCatalog(sets = TEST_SETS, cards = ff14 + ff8)
 
     private fun repositories(): List<CardRepository> = listOf(
         BundledCardRepository { catalog },
@@ -66,8 +71,8 @@ class CardRepositoryTest {
     @Test
     fun anIdIsResolvedWithinItsCollection() = runTest {
         for (repository in repositories()) {
-            assertEquals("Dodo", repository.byId(1, CardCollection.FF14)?.name)
-            assertEquals("Geezard", repository.byId(1, CardCollection.FF8)?.name)
+            assertEquals("Dodo", repository.byId(ff14(1), CardCollection.FF14)?.name)
+            assertEquals("Geezard", repository.byId(ff8(1), CardCollection.FF8)?.name)
         }
     }
 
@@ -75,8 +80,8 @@ class CardRepositoryTest {
     @Test
     fun anUnknownIdIsNull() = runTest {
         for (repository in repositories()) {
-            assertNull(repository.byId(999, CardCollection.FF14))
-            assertNull(repository.byId(4, CardCollection.FF8))
+            assertNull(repository.byId(ff14(200), CardCollection.FF14))
+            assertNull(repository.byId(ff8(4), CardCollection.FF8))
         }
     }
 
@@ -86,9 +91,9 @@ class CardRepositoryTest {
     @Test
     fun byIdsFollowsTheRequestedOrderAndSkipsWhatIsMissing() = runTest {
         for (repository in repositories()) {
-            val cards = repository.byIds(listOf(4, 1, 999, 2), CardCollection.FF14)
+            val cards = repository.byIds(listOf(4, 1, 200, 2).map(::ff14), CardCollection.FF14)
 
-            assertEquals(listOf(4, 1, 2), cards.map { it.id })
+            assertEquals(listOf(4, 1, 2).map(::ff14), cards.map { it.id })
         }
     }
 
@@ -97,8 +102,9 @@ class CardRepositoryTest {
     fun byIdsKeepsDuplicates() = runTest {
         for (repository in repositories()) {
             assertEquals(
-                listOf(1, 1, 2),
-                repository.byIds(listOf(1, 1, 2), CardCollection.FF14).map { it.id },
+                listOf(1, 1, 2).map(::ff14),
+                repository.byIds(listOf(1, 1, 2).map(::ff14), CardCollection.FF14)
+                    .map { it.id },
             )
         }
     }
@@ -113,14 +119,20 @@ class CardRepositoryTest {
     @Test
     fun cardsCanBeFilteredByRarityAndType() = runTest {
         for (repository in repositories()) {
-            assertEquals(listOf(2, 3), repository.byRarity(2, CardCollection.FF14).map { it.id })
+            assertEquals(
+                listOf(2, 3).map(::ff14),
+                repository.byRarity(2, CardCollection.FF14).map { it.id },
+            )
             assertTrue(repository.byRarity(4, CardCollection.FF14).isEmpty())
             assertEquals(
-                listOf(2, 3),
+                listOf(2, 3).map(::ff14),
                 repository.byType(CardType.BEAST, CardCollection.FF14).map { it.id },
             )
             // Most cards have no type at all, and that is a queryable value.
-            assertEquals(listOf(1), repository.byType(null, CardCollection.FF14).map { it.id })
+            assertEquals(
+                listOf(ff14(1)),
+                repository.byType(null, CardCollection.FF14).map { it.id },
+            )
         }
     }
 
@@ -128,10 +140,13 @@ class CardRepositoryTest {
     fun searchIsCaseInsensitiveAndPartial() = runTest {
         for (repository in repositories()) {
             assertEquals(
-                listOf(2),
+                listOf(ff14(2)),
                 repository.search("tonberry", CardCollection.FF14).map { it.id },
             )
-            assertEquals(listOf(2), repository.search("BERR", CardCollection.FF14).map { it.id })
+            assertEquals(
+                listOf(ff14(2)),
+                repository.search("BERR", CardCollection.FF14).map { it.id },
+            )
             assertTrue(repository.search("chocobo", CardCollection.FF14).isEmpty())
         }
     }
@@ -150,11 +165,11 @@ class CardRepositoryTest {
     fun idsByRaritiesMatchesTheAs3Helper() = runTest {
         for (repository in repositories()) {
             assertEquals(
-                listOf(1, 2, 3),
+                listOf(1, 2, 3).map(::ff14),
                 repository.idsByRarities(setOf(1, 2), CardCollection.FF14),
             )
             assertEquals(
-                listOf(1, 2, 3, 4),
+                listOf(1, 2, 3, 4).map(::ff14),
                 repository.idsByRarities((1..5).toSet(), CardCollection.FF14),
             )
             assertTrue(repository.idsByRarities(emptySet(), CardCollection.FF14).isEmpty())
@@ -194,9 +209,9 @@ class CardRepositoryTest {
     }
 
     @Test
-    fun theCatalogKeysItsCollectionsByTheAs3Prefix() {
-        assertEquals(ff14, catalog.collection("ff14_"))
-        assertEquals(ff8, catalog.collection("ff8_"))
+    fun theCatalogKeepsItsShippedTablesReachable() {
+        assertEquals(ff14, catalog.collection(CardCollection.FF14))
+        assertEquals(ff8, catalog.collection(CardCollection.FF8))
         assertEquals(ff14 + ff8, catalog.all)
     }
 }

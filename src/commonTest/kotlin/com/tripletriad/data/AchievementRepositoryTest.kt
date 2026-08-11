@@ -54,7 +54,7 @@ class AchievementRepositoryTest {
         assertEquals(listOf("ac-tt1", "ac-tt2"), award.earned.map { it.id })
     }
 
-    /** `ac-tt3` grants `CardItem(75)`, which `Achievements.check()` pushes into `BAG`. */
+    /** `ac-tt3` grants `CardItem(331)`, which `Achievements.check()` pushes into `BAG`. */
     @Test
     fun aRewardLandsInTheBag() {
         val save = GameSave(npcWins = mapOf("jonas" to 300))
@@ -62,18 +62,18 @@ class AchievementRepositoryTest {
         val award = repository.credit(save, at = 100)
 
         assertTrue(award.earned.any { it.id == "ac-tt3" })
-        assertEquals(1, Inventory.count(award.save, CardItem(75)))
+        assertEquals(1, Inventory.count(award.save, CardItem(331)))
     }
 
     /** Through [Inventory.add], so a second copy stacks rather than becoming a second row. */
     @Test
     fun aRewardAlreadyHeldStacksRatherThanDuplicating() {
-        val save = Inventory.add(GameSave(npcWins = mapOf("jonas" to 300)), CardItem(75))
+        val save = Inventory.add(GameSave(npcWins = mapOf("jonas" to 300)), CardItem(331))
 
         val award = repository.credit(save, at = 100)
 
         assertEquals(1, award.save.bag.size)
-        assertEquals(2, Inventory.count(award.save, CardItem(75)))
+        assertEquals(2, Inventory.count(award.save, CardItem(331)))
     }
 
     /**
@@ -88,18 +88,18 @@ class AchievementRepositoryTest {
     fun aRewardDoesNotEnableAFurtherAchievement() {
         // Nine cards owned: ac-td1 wants ten. ac-tt3's reward would be the tenth *if* rewards
         // landed in the collection rather than the bag.
-        val save = GameSave(cards = (1..9).toList(), npcWins = mapOf("jonas" to 300))
+        val save = GameSave(cards = (1..9).associateWith { 1 }, npcWins = mapOf("jonas" to 300))
 
         val first = repository.credit(save, at = 100)
         assertTrue(first.earned.any { it.id == "ac-tt3" })
-        assertEquals(1, Inventory.count(first.save, CardItem(75)), "the reward is in the bag")
+        assertEquals(1, Inventory.count(first.save, CardItem(331)), "the reward is in the bag")
         assertEquals(9, first.save.cards.size, "and not in the collection")
 
         val second = repository.credit(first.save, at = 200)
         assertFalse(second.hasAwards, "nothing new — a reward cannot satisfy a requirement")
 
         // Using it is what moves the card across, and *then* ac-td1 is reachable.
-        val used = Inventory.use(first.save, CardItem(75)).save
+        val used = Inventory.use(first.save, CardItem(331)).save
         assertEquals(10, used.cards.size)
         assertEquals(listOf("ac-td1"), repository.credit(used, at = 300).earned.map { it.id })
     }

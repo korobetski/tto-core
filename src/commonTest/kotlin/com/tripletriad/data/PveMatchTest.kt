@@ -23,11 +23,13 @@ import kotlin.test.assertTrue
  * screen property and half through the global `Game.PROFILE_DATAS`.
  */
 class PveMatchTest {
-    private fun card(id: Int, collection: String) = Card(
-        id = id,
-        collection = collection,
-        nameKey = "STR_TEST_$id",
-        name = "Test $id",
+    /** A block-1 card id — the shipped `ff14` table. Ids are global; these fixtures are not. */
+    private fun ff14(number: Int) = Card.idFor(block = 1, number = number)
+
+    private fun card(block: Int, number: Int) = Card(
+        id = Card.idFor(block, number),
+        nameKey = "STR_TEST_$block-$number",
+        name = "Test $block-$number",
         top = 5,
         right = 5,
         bottom = 5,
@@ -36,22 +38,39 @@ class PveMatchTest {
     )
 
     private val catalog = CardCatalog(
-        ff14 = (1..40).map { card(it, "ff14_") },
-        ff8 = (1..30).map { card(it, "ff8_") },
+        sets = TEST_SETS,
+        cards = (1..40).map { card(1, it) } + (1..30).map { card(2, it) },
     )
 
     private val opponent = Npc(
         id = 1,
         nameKey = "STR_NPC_Test",
         iconId = "test-npc",
-        fetishCards = listOf(11, 12, 13),
-        cards = listOf(20, 21, 22, 23),
+        fetishCards = listOf(11, 12, 13).map(::ff14),
+        cards = listOf(20, 21, 22, 23).map(::ff14),
     )
+
+    /** A block-2 card id — the shipped `ff8` table. */
+    private fun ff8(number: Int) = Card.idFor(block = 2, number = number)
+
+    /**
+     * Ids are global, so a profile's deck has to name cards of the table it plays: an `ff8` profile
+     * holding `ff14` ids used to be unrepresentable and is now merely wrong.
+     */
+    private fun numbering(mode: CardCollection): (Int) -> Int =
+        if (mode == CardCollection.FF8) ::ff8 else ::ff14
+
+    /** The same opponent, drawn from the other shipped table — see [numbering]. */
+    private val ff8Opponent
+        get() = opponent.copy(
+            fetishCards = listOf(11, 12, 13).map(::ff8),
+            cards = listOf(20, 21, 22, 23).map(::ff8),
+        )
 
     private fun profile(
         mode: CardCollection = CardCollection.FF14,
-        cards: List<Int> = (1..12).toList(),
-        decks: List<Deck> = listOf(Deck("Starter", listOf(1, 2, 3, 4, 5))),
+        cards: Map<Int, Int> = (1..12).associate { numbering(mode)(it) to 1 },
+        decks: List<Deck> = listOf(Deck("Starter", (1..5).map(numbering(mode)))),
     ) = GameSave.new(createdAt = 0L, mode = mode).copy(cards = cards, decks = decks)
 
     private val seeds = 0 until 40
@@ -64,16 +83,20 @@ class PveMatchTest {
         assertEquals(HAND_SIZE, hands[CardColor.BLUE]?.size)
         assertEquals(HAND_SIZE, hands[CardColor.RED]?.size)
         assertTrue(
-            hands.values.flatten().all { it.collection == "ff14_" },
+            hands.values.flatten().all { it.block == CardCollection.FF14.block },
             "an ff14_ profile must only ever see ff14_ cards",
         )
     }
 
     @Test
     fun anFf8ProfileGetsFf8Cards() {
-        val match = PveMatches.assemble(profile(CardCollection.FF8), opponent, catalog, Random(1))
+        val match =
+            PveMatches.assemble(profile(CardCollection.FF8), ff8Opponent, catalog, Random(1))
 
-        assertTrue(match.setup.state.hands.values.flatten().all { it.collection == "ff8_" })
+        assertTrue(
+            match.setup.state.hands.values.flatten()
+                .all { it.block == CardCollection.FF8.block },
+        )
     }
 
     // ---- Choosing a deck ---------------------------------------------------
@@ -82,8 +105,8 @@ class PveMatchTest {
     @Test
     fun theDeckPassedInIsTheDeckDealt() {
         val decks = listOf(
-            Deck("First", listOf(1, 2, 3, 4, 5)),
-            Deck("Second", listOf(6, 7, 8, 9, 10)),
+            Deck("First", (1..5).map(::ff14)),
+            Deck("Second", (6..10).map(::ff14)),
         )
         val save = profile(decks = decks)
         val random = Random(1)
@@ -123,12 +146,12 @@ class PveMatchTest {
     @Test
     fun onlyCompleteAndResolvableDecksArePlayable() {
         val save = profile(
-            cards = (1..12).toList(),
+            cards = (1..12).associate { ff14(it) to 1 },
             decks = listOf(
-                Deck("Partial", listOf(1, 2)),
-                Deck("Full", listOf(1, 2, 3, 4, 5)),
+                Deck("Partial", listOf(1, 2).map(::ff14)),
+                Deck("Full", (1..5).map(::ff14)),
                 // Five ids, but 99 is in neither table, so this one would throw if it were offered.
-                Deck("Broken", listOf(1, 2, 3, 4, 99)),
+                Deck("Broken", listOf(1, 2, 3, 4, 99).map(::ff14)),
             ),
         )
 
@@ -140,7 +163,7 @@ class PveMatchTest {
 
     @Test
     fun aProfileWithNoCompleteDeckOffersNothingToChooseFrom() {
-        val save = profile(decks = listOf(Deck("Partial", listOf(1, 2))))
+        val save = profile(decks = listOf(Deck("Partial", listOf(1, 2).map(::ff14))))
 
         assertTrue(PveMatches.playableDecks(save, catalog).isEmpty())
         // …and still has something to play, which is what the fallback is for.
@@ -150,8 +173,8 @@ class PveMatchTest {
     /** The complete deck is played, not the first five cards owned. */
     @Test
     fun theFirstCompleteDeckIsPlayed() {
-        val chosen = listOf(6, 7, 8, 9, 10)
-        val decks = listOf(Deck("Partial", listOf(1, 2)), Deck("Full", chosen))
+        val chosen = (6..10).map(::ff14)
+        val decks = listOf(Deck("Partial", listOf(1, 2).map(::ff14)), Deck("Full", chosen))
 
         val match = PveMatches.assemble(profile(decks = decks), opponent, catalog, Random(1))
 
@@ -166,7 +189,7 @@ class PveMatchTest {
      */
     @Test
     fun aProfileWithNoCompleteDeckFallsBackToTheCardsItOwns() {
-        val partial = profile(decks = listOf(Deck("Partial", listOf(1, 2))))
+        val partial = profile(decks = listOf(Deck("Partial", listOf(1, 2).map(::ff14))))
 
         val hand = PveMatches.assemble(partial, opponent, catalog, Random(1))
             .setup.state.hands[CardColor.BLUE]
@@ -233,7 +256,7 @@ class PveMatchTest {
 
     @Test
     fun anFf8RouletteOpponentDrawsFromTheFf8Pool() {
-        val gambler = opponent.copy(ruleKeys = listOf("RULE_ROULETTE"))
+        val gambler = ff8Opponent.copy(ruleKeys = listOf("RULE_ROULETTE"))
         val pool = Roulette.pool(CardCollection.FF8).toSet()
 
         for (seed in seeds) {
@@ -264,7 +287,7 @@ class PveMatchTest {
 
     @Test
     fun anElementalOpponentGetsAnElementalBoard() {
-        val elemental = opponent.copy(ruleKeys = listOf("RULE_ELEMENTAL"))
+        val elemental = ff8Opponent.copy(ruleKeys = listOf("RULE_ELEMENTAL"))
 
         val match = PveMatches.assemble(profile(CardCollection.FF8), elemental, catalog, Random(1))
 
@@ -287,16 +310,16 @@ class PveMatchTest {
     fun aDefaultOpponentRevealsNothing() {
         val match = PveMatches.assemble(profile(), opponent, catalog, Random(1))
 
-        assertTrue(match.setup.opponentVisibility.visibleCardIds.isEmpty())
+        assertTrue(match.setup.opponentVisibility.visiblePositions.isEmpty())
     }
 
     /** Under Random the deck is ignored and the hand comes from the whole collection. */
     @Test
     fun aRandomOpponentMakesTheHandComeFromTheCollection() {
         val chaotic = opponent.copy(ruleKeys = listOf("RULE_RANDOM"))
-        val deck = Deck("Deck", listOf(1, 2, 3, 4, 5))
-        val owner = profile(cards = (1..12).toList(), decks = listOf(deck))
-        val outsideTheDeck = (6..12).toSet()
+        val deck = Deck("Deck", (1..5).map(::ff14))
+        val owner = profile(cards = (1..12).associate { ff14(it) to 1 }, decks = listOf(deck))
+        val outsideTheDeck = (6..12).map(::ff14).toSet()
 
         val dealtOutside = seeds.count { seed ->
             PveMatches.assemble(owner, chaotic, catalog, Random(seed))
@@ -362,7 +385,12 @@ class PveMatchTest {
      */
     @Test
     fun anUnresolvableOpponentCardIsAProgrammingError() {
-        val broken = opponent.copy(fetishCards = listOf(1, 2, 3, 4, 999), cards = emptyList())
+        // 200 is a legal number in block 1 and names no card in this fixture catalog, which
+        // stops at 40 — an unresolvable id now has to be in range to get that far.
+        val broken = opponent.copy(
+            fetishCards = listOf(1, 2, 3, 4, 200).map(::ff14),
+            cards = emptyList(),
+        )
 
         val failure = assertFailsWith<IllegalArgumentException> {
             PveMatches.assemble(profile(), broken, catalog, Random(1))
@@ -375,7 +403,7 @@ class PveMatchTest {
         // ff8_ has 30 cards, so these ids exist in ff14_ only.
         val impossible = profile(
             mode = CardCollection.FF8,
-            cards = listOf(31, 32, 33, 34, 35),
+            cards = (31..35).associate { ff14(it) to 1 },
             decks = emptyList(),
         )
 
@@ -383,4 +411,25 @@ class PveMatchTest {
             PveMatches.assemble(impossible, opponent, catalog, Random(1))
         }
     }
+
+    /**
+     * `RULE_RANDOM` draws five without replacement from the collection, and a copy is a card the
+     * draw can reach — a profile holding three of one card and two others can field a hand that a
+     * distinct-card list would have refused to deal. See `GameSave.ownedCardIds`.
+     */
+    @Test
+    fun aRandomHandCanBeDealtFromFewerThanFiveDistinctCards() {
+        val chaotic = opponent.copy(ruleKeys = listOf("RULE_RANDOM"))
+        val hoarder = profile(
+            cards = mapOf(ff14(1) to 3, ff14(2) to 1, ff14(3) to 1),
+            decks = emptyList(),
+        )
+
+        val hand = PveMatches.assemble(hoarder, chaotic, catalog, Random(1))
+            .setup.state.hands.getValue(CardColor.BLUE)
+
+        assertEquals(HAND_SIZE, hand.size)
+        assertEquals(3, hand.count { it.id == ff14(1) }, "all three copies are drawable")
+    }
+
 }

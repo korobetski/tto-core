@@ -2,6 +2,7 @@ package com.tripletriad.data
 
 import com.tripletriad.model.BoosterItem
 import com.tripletriad.model.BoosterType
+import com.tripletriad.model.Card
 import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardItem
 import com.tripletriad.model.GameSave
@@ -21,6 +22,9 @@ import kotlin.test.assertTrue
  * — plus spot checks on numbers a re-derivation would get wrong.
  */
 class ShopCatalogTest {
+    /** A block-1 card id — the shipped `ff14` table. */
+    private fun ff14(number: Int) = Card.idFor(block = 1, number = number)
+
     private fun profile(mgp: Int, mode: CardCollection = CardCollection.FF14) =
         GameSave.new(createdAt = 0L, mode = mode).copy(mgp = mgp)
 
@@ -68,8 +72,8 @@ class ShopCatalogTest {
 
         assertEquals(priceOf(BoosterType.SILVER), priceOf(BoosterType.SCION), "both 1152")
         assertEquals(priceOf(BoosterType.GOLD), priceOf(BoosterType.GARLEAN), "both 2160")
-        assertEquals(1_000_000, priceOf(74))
-        assertTrue(priceOf(118) < priceOf(63), "the later id is the cheaper card")
+        assertEquals(1_000_000, priceOf(ff14(74)))
+        assertTrue(priceOf(ff14(118)) < priceOf(ff14(63)), "the later id is the cheaper card")
     }
 
     /** Declared, in the pack table, and sold nowhere. See [ShopCatalog]. */

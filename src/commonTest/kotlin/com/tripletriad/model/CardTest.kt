@@ -9,8 +9,8 @@ class CardTest {
 
     /** `cards.as` FF8_DATAS[1]: `{name:"STR_FF8_CARD_1", power:[1,4,1,5], rarity:1}`. */
     private val geezard = Card(
-        id = 1,
-        collection = "ff8_",
+        // Geezard is card 1 of block 2, the shipped `ff8` table: 0x0201.
+        id = Card.idFor(block = 2, number = 1),
         nameKey = "STR_FF8_CARD_1",
         name = "Geezard",
         top = 1,

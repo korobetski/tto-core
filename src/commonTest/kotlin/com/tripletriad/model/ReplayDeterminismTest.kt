@@ -1,6 +1,7 @@
 package com.tripletriad.model
 
 import com.tripletriad.data.CardCatalog
+import com.tripletriad.data.TEST_SETS
 import com.tripletriad.data.PveMatches
 import kotlin.random.Random
 import kotlin.test.Test
@@ -128,7 +129,7 @@ class ReplayDeterminismTest {
     /** `RULE_THREE_OPEN` reveals the same three cards for a seed. */
     @Test
     fun theOpenRuleRevealsTheSameCards() {
-        val hand = (1..HAND_SIZE).map { card(it, "ff14_") }
+        val hand = (1..HAND_SIZE).map { card(1, it) }
 
         for (seed in SEEDS) {
             val first = HandVisibility.forRule(OpenRule.THREE_OPEN, hand, Random(seed))
@@ -137,7 +138,7 @@ class ReplayDeterminismTest {
             assertEquals(first, second, "seed $seed")
             assertEquals(
                 HandVisibility.THREE_OPEN_COUNT,
-                first.visibleCardIds.size,
+                first.visiblePositions.size,
                 "seed $seed reveals three",
             )
         }
@@ -174,6 +175,27 @@ class ReplayDeterminismTest {
     @Test
     fun aWholeMatchMatchesTheRecordedRun() {
         assertEquals(GOLDEN_MATCH, playOut(GOLDEN_SEED))
+    }
+
+    /**
+     * The golden was re-recorded, and this is the evidence that it was only *renumbered*.
+     *
+     * Global card ids move every id in the transcript, so the recorded run had to change — but
+     * nothing about the deal, the AI or the rules did, so it had to change in exactly one way. This
+     * shifts every id in the old run by one block and requires the result to be the new run: same
+     * cards in the same order, into the same cells, for the same score.
+     *
+     * It is a check on a past migration rather than a live invariant, and it is kept because the
+     * cheap version of "we re-recorded the golden" is a paste, which proves nothing.
+     */
+    @Test
+    fun theRenumberingChangedTheIdsAndNothingElse() {
+        val renumbered = Regex("([BR])(\\d+)@").replace(PREVIOUS_GOLDEN_MATCH) { match ->
+            val (side, id) = match.destructured
+            "$side${id.toInt() + BLOCK_ONE_OFFSET}@"
+        }
+
+        assertEquals(GOLDEN_MATCH, renumbered)
     }
 
     /**
@@ -224,37 +246,37 @@ class ReplayDeterminismTest {
             "= ${score.blue}-${score.red}"
     }
 
-    private fun card(id: Int, collection: String) = Card(
-        id = id,
-        collection = collection,
-        nameKey = "STR_TEST_$id",
-        name = "Test $id",
-        top = (id % 9) + 1,
-        right = ((id + 3) % 9) + 1,
-        bottom = ((id + 5) % 9) + 1,
-        left = ((id + 7) % 9) + 1,
+    private fun card(block: Int, number: Int) = Card(
+        id = Card.idFor(block, number),
+        nameKey = "STR_TEST_$block-$number",
+        name = "Test $block-$number",
+        top = (number % 9) + 1,
+        right = ((number + 3) % 9) + 1,
+        bottom = ((number + 5) % 9) + 1,
+        left = ((number + 7) % 9) + 1,
         rarity = 1,
     )
 
     private val catalog = CardCatalog(
-        ff14 = (1..40).map { card(it, "ff14_") },
-        ff8 = (1..30).map { card(it, "ff8_") },
+        sets = TEST_SETS,
+        cards = (1..40).map { card(1, it) } + (1..30).map { card(2, it) },
     )
 
     private val opponent = Npc(
         id = 1,
         nameKey = "STR_NPC_Test",
         iconId = "test-npc",
-        fetishCards = listOf(11, 12, 13),
-        cards = listOf(20, 21, 22, 23),
+        fetishCards = listOf(11, 12, 13).map { card(1, it).id },
+        cards = listOf(20, 21, 22, 23).map { card(1, it).id },
     )
 
     private fun profile() = GameSave.new(createdAt = 0L).copy(
-        cards = (1..12).toList(),
-        decks = listOf(Deck("Starter", listOf(1, 2, 3, 4, 5))),
+        cards = (1..12).associate { card(1, it).id to 1 },
+        decks = listOf(Deck("Starter", (1..5).map { card(1, it).id })),
     )
 
     private companion object {
+
         /** Arbitrary, and fixed forever: the goldens below were recorded against it. */
         const val GOLDEN_SEED = 20260806
 
@@ -299,8 +321,27 @@ class ReplayDeterminismTest {
         val GOLDEN_SHUFFLE = listOf(7, 1, 8, 10, 2, 4, 6, 3, 9, 5)
         val GOLDEN_PICKS = listOf(5, 8, 1, 2, 6, 7, 6, 4)
 
-        /** No special rules, nine placements, and blue loses 7-3. */
+        /**
+         * No special rules, nine placements, and blue loses 7-3.
+         *
+         * **Re-recorded when card ids became global**, which is the one reason this class's note
+         * allows: a golden breaking is a data-version bump, and that is what it was — `AppVersion`
+         * 1.0.0 and `TRANSCRIPT_VERSION` 2 carry it, so no stored transcript claims to replay
+         * against this build.
+         *
+         * The re-recording is checked rather than pasted. [PREVIOUS_GOLDEN_MATCH] is the run this
+         * replaces, and [theRenumberingChangedTheIdsAndNothingElse] asserts the two differ by
+         * exactly `+256` on every id — same cards, same order, same cells, same score. Renumbering
+         * is meant to be invisible to the engine, and that test is what says so.
+         */
         const val GOLDEN_MATCH =
+            "[] R278@4,B257@1,R268@3,B258@0,R279@6,B261@7,R267@2,B259@5,R269@8 = 7-3"
+
+        /** The same run before block 1 existed, kept only for the check above. */
+        const val PREVIOUS_GOLDEN_MATCH =
             "[] R22@4,B1@1,R12@3,B2@0,R23@6,B5@7,R11@2,B3@5,R13@8 = 7-3"
+
+        /** ff14 became block 1, so every id in the old run moved by one block. */
+        const val BLOCK_ONE_OFFSET = 256
     }
 }

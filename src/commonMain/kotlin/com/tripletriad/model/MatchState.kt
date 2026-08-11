@@ -2,12 +2,21 @@ package com.tripletriad.model
 
 import kotlin.random.Random
 
-/** What one placement did. Kept on the state so the UI can animate the last move. */
+/**
+ * What one placement did. Kept on the state so the UI can animate the last move.
+ *
+ * @property handIndex where the card sat in [player]'s hand before it was played. Presentation
+ *   only, like the rest of this record, and the one thing a caller cannot recover afterwards: the
+ *   hand closes the gap, so by the time this is read the slot is gone. [HandVisibility.afterPlaying]
+ *   is what needs it — without it the Open rule shows the wrong cards once a hand holds two copies
+ *   of one card. See `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § 1.
+ */
 data class PlayResult(
     val player: CardColor,
     val card: Card,
     val position: Int,
     val captures: List<Capture>,
+    val handIndex: Int = 0,
 )
 
 /** How a finished match ended. */
@@ -109,6 +118,10 @@ data class MatchState(
         // bad argument, so it raises IllegalStateException.
         val player = checkNotNull(currentPlayer) { "the match is over" }
         val hand = hands[player].orEmpty()
+        // The *first* card with this id, which matters now that a hand can hold two of them: they
+        // are indistinguishable — `Card` is a value and a copy carries no identity — so playing
+        // either is the same move. This is correct rather than an oversight; it is written down
+        // because it looks like the defect `HandVisibility` had and is not one.
         val index = hand.indexOfFirst { it.id == card.id }
         require(index >= 0) { "card ${card.id} is not in $player's hand" }
 
@@ -118,7 +131,7 @@ data class MatchState(
             hands = hands + (player to hand.filterIndexed { i, _ -> i != index }),
             placement = placement + 1,
             tally = tally.record(card.type, rules.typeRule),
-            lastPlay = PlayResult(player, card, position, resolution.captures),
+            lastPlay = PlayResult(player, card, position, resolution.captures, index),
         )
     }
 

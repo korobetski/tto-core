@@ -75,29 +75,50 @@ enum class CardType {
 }
 
 /**
- * Which of the two card tables a card belongs to, and which a profile plays with.
+ * Which of the two shipped card tables a card belongs to, and which a profile plays with.
  *
- * The serial names are the raw AS3 strings, trailing underscore included, because they are three
- * things at once: the texture-name prefix (`ff14_card_62`), the key `cards.as` selects a table with
- * (`cards[MODE.toUpperCase() + "DATAS"]`), and the value stored as `Save.DATAS.MODE`. A save
- * written by the original must still parse.
+ * ### What is left of it, now that ids are global
  *
- * [Card.collection] remains a `String` rather than this enum: it is populated by
- * `tools/extract_cards.py` straight from the AS3 texture prefix, and `CardCatalog` keys its two
- * lists by the same string. [prefix] is the bridge, and [forPrefix] the way back.
+ * Its original job is gone. It existed because the AS3 bolted two independently numbered tables
+ * together — FFXIV 1..153, FFVIII 1..110 — so every FFVIII id also named an FFXIV card, and
+ * `Save.DATAS.MODE` said which table `CARDS` indexed. Card ids are now
+ * `(block shl 8) or number` and unique across every set, so nothing has to be disambiguated.
+ *
+ * What remains is the four things that are still genuinely per-table — the opponents, the shop
+ * shelf, the rule pool and the campaign — and those become a **format** in
+ * `docs/migration/19-CARD-SETS-AND-FORMATS.md`, which is the next change and not this one. This
+ * enum is the placeholder in between: it is keyed by [block] rather than by a texture prefix, so it
+ * is already a set reference rather than an index, and the day formats land it is deleted rather
+ * than rewritten.
+ *
+ * @property storageKey what this collection is **written as**, trailing underscore included: the
+ *   save's `MODE`, the server's `matches.collection` column, and the canonical transcript digest.
+ *   It used to be called `prefix`, because it was also the texture-name prefix and the key the two
+ *   card tables were looked up by; ids are global now, so the only job left is being the string
+ *   already on disk. Renamed rather than deleted for exactly that reason — changing the value would
+ *   need a migration and would mislabel every stored match, and this column becomes `format_id` in
+ *   `docs/migration/19-CARD-SETS-AND-FORMATS.md` anyway.
+ * @property slug what a path, a URL and a human use. The same string a [CardSet] carries.
  */
 @Serializable
-enum class CardCollection(val prefix: String) {
+enum class CardCollection(val block: Int, val slug: String, val storageKey: String) {
     @SerialName("ff14_")
-    FF14("ff14_"),
+    FF14(1, "ff14", "ff14_"),
 
     @SerialName("ff8_")
-    FF8("ff8_"),
+    FF8(2, "ff8", "ff8_"),
     ;
 
     companion object {
-        /** The collection for a `"ff14_"`-style prefix, or null if it names neither. */
-        fun forPrefix(prefix: String): CardCollection? = entries.firstOrNull { it.prefix == prefix }
+        /** The collection holding [block], or null if no shipped table does. */
+        fun forBlock(block: Int): CardCollection? = entries.firstOrNull { it.block == block }
+
+        /** The collection named `"ff14"`, or null. */
+        fun forSlug(slug: String): CardCollection? = entries.firstOrNull { it.slug == slug }
+
+        /** The collection a stored `"ff14_"` names, or null. See [storageKey]. */
+        fun forStorageKey(key: String): CardCollection? =
+            entries.firstOrNull { it.storageKey == key }
     }
 }
 
@@ -106,8 +127,27 @@ enum class CardCollection(val prefix: String) {
  *
  * Field-for-field the AS3 record in `sources/src/tto/datas/cards.as`, which stores
  * each card as `{name, power, rarity, type}` and identifies it by its **index in
- * that array** — the same integer used by `Card.draw()`, `CardItem` and the save
- * file. That index is [id] here; there is no separate key.
+ * that array**.
+ *
+ * ### The id is global, and is two numbers in one
+ *
+ * `id = (block shl 8) or number`, with `block >= 1` and `number` in 1..255 — the scheme
+ * `docs/migration/19-CARD-SETS-AND-FORMATS.md` § Card identifiers decides. So the id reads in hex
+ * at a glance (`0x013e` is card 62 of block 1) and both halves come back out with a shift and a
+ * mask rather than a lookup.
+ *
+ * It replaces the AS3 array index, which was unique only *within* a table and is why
+ * [CardCollection] had to exist at all. Three properties follow, and each is the reason to prefer
+ * this to a plain sequence:
+ *
+ * - **No real id is below 256**, so the whole range 1..255 is poison and every legacy id is
+ *   *detectably* invalid rather than silently remapped onto the first set.
+ * - **`0` keeps its meaning** — `saveDeck_Handler` pushes it for an empty deck slot — because no
+ *   block holds a number 0.
+ * - **A set can grow after release** without touching what it has published, up to 255.
+ *
+ * If a set ever needs more than 255 cards it takes a second block, which costs one row and no
+ * rethinking. It is why a set is a *list* of blocks and not one block.
  *
  * [top], [right], [bottom], [left] are `power[0..3]`, in that order, as stated by
  * the comment in `CardDigits.display()`. Note the AS3 reads each element with
@@ -117,8 +157,6 @@ enum class CardCollection(val prefix: String) {
 @Serializable
 data class Card(
     val id: Int,
-    /** `ff14_` or `ff8_`, matching the AS3 texture-name prefix. */
-    val collection: String,
     /** The i18n key, e.g. `STR_FF14_CARD_1`. Kept so the real name is derivable. */
     val nameKey: String,
     /** The `en_US` name, resolved at extraction time from `datas/locales`. */
@@ -132,8 +170,17 @@ data class Card(
     val type: CardType? = null,
     val owner: CardColor = CardColor.BLUE,
 ) {
+    /** The set this card belongs to — the high byte of [id]. */
+    val block: Int get() = id shr BLOCK_SHIFT
+
+    /** Its number within that set, 1..255 — the low byte of [id]. */
+    val number: Int get() = id and NUMBER_MASK
+
     init {
-        require(id > 0) { "card id must be positive, was $id" }
+        require(id >= FIRST_ID) {
+            "card id must name a block and a number, was $id (the range 1..$NUMBER_MASK is legacy)"
+        }
+        require(number in NUMBER_RANGE) { "card number must be in $NUMBER_RANGE, was $number" }
         require(rarity in RARITY_RANGE) { "rarity must be in $RARITY_RANGE, was $rarity" }
         val sides = listOf(
             "top" to top,
@@ -150,6 +197,23 @@ data class Card(
     fun captured(): Card = copy(owner = owner.opposite())
 
     companion object {
+        /** `id shr 8` is the block; `id and 0xFF` is the number. */
+        const val BLOCK_SHIFT: Int = 8
+        const val NUMBER_MASK: Int = 0xFF
+
+        /** Blocks start at 1, so this is the lowest id a real card can have. */
+        const val FIRST_ID: Int = 1 shl BLOCK_SHIFT
+
+        /** Number 0 is reserved: an empty deck slot is stored as `0`. */
+        val NUMBER_RANGE = 1..NUMBER_MASK
+
+        /** `(block shl 8) or number`. The one place the id scheme is built. */
+        fun idFor(block: Int, number: Int): Int {
+            require(block >= 1) { "block must be positive, was $block" }
+            require(number in NUMBER_RANGE) { "number must be in $NUMBER_RANGE, was $number" }
+            return (block shl BLOCK_SHIFT) or number
+        }
+
         /**
          * Every edge power is one hex digit, 1..A. There is no `cd0` in play (the
          * texture exists but no card has a 0) and no value above A.

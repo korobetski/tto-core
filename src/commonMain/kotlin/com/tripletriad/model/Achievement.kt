@@ -62,6 +62,11 @@ sealed interface Requirement {
 
     /** Own [count] cards. `CARDS.length` — the Triple-decker tier. */
     data class CardsOwned(val count: Int) : Requirement {
+        // `size` on the map is the count of **distinct** cards, which is what this requirement
+        // means and must keep meaning: "own 50 cards" is a collection milestone, and paying it out
+        // for fifty copies of one common would be a different and worse achievement. Right here by
+        // construction rather than by accident, and said so because summing the values reads like
+        // the obvious fix.
         override fun progress(save: GameSave) = Progress(save.cards.size, count)
     }
 
@@ -99,7 +104,9 @@ sealed interface Requirement {
  * @property labelKey i18n key, e.g. `STR_Triple_Team_I`. Mixed case in the original, kept verbatim
  *   because it is a lookup key in the locale bundles.
  * @property iconId texture name. Note the tiers reuse `card_r{n}_icon` to signal difficulty, and
- *   `ac-fob` uses a card thumbnail (`ff14_thumb_37`).
+ *   `ac-fob` uses a card thumbnail, named `card_thumb_<card id>` — it was `ff14_thumb_37`, and the
+ *   prefix went with the collection that justified it. The client turns the id into an atlas frame
+ *   name; see `thumbTextureId`.
  * @property reward granted into the bag on earning it. Only three achievements have one.
  */
 data class Achievement(
@@ -132,13 +139,15 @@ data class Achievement(
  */
 object AchievementCatalog {
     /** The thirteen beast cards, `Achievements.as:71`. Also [BoosterType.BEAST]'s pool. */
-    val BEAST_CARDS: List<Int> = listOf(14, 15, 16, 17, 18, 27, 35, 36, 37, 82, 83, 117, 128)
+    val BEAST_CARDS: List<Int> = listOf(
+        270, 271, 272, 273, 274, 283, 291, 292, 293, 338, 339, 373, 384,
+    )
 
     val all: List<Achievement> = listOf(
         // Triple Team — defeat n NPCs.
         tripleTeam("ac-tt1", "STR_Triple_Team_I", 1),
         tripleTeam("ac-tt2", "STR_Triple_Team_II", 30),
-        tripleTeam("ac-tt3", "STR_Triple_Team_III", 300, reward = CardItem(75)),
+        tripleTeam("ac-tt3", "STR_Triple_Team_III", 300, reward = CardItem(331)),
         tripleTeam("ac-tt4", "STR_Triple_Team_IV", 3_000),
         tripleTeam("ac-tt5", "STR_Triple_Team_V", 7_777),
 
@@ -147,7 +156,7 @@ object AchievementCatalog {
         roulette("ac-wof2", "STR_Wheel_Of_Fortune_II", 10, "card_r2_icon"),
         roulette("ac-wof3", "STR_Wheel_Of_Fortune_III", 30, "card_r2_icon"),
         roulette("ac-wof4", "STR_Wheel_Of_Fortune_IV", 100, "card_r3_icon"),
-        roulette("ac-wof5", "STR_Wheel_Of_Fortune_V", 300, "card_r4_icon", reward = CardItem(79)),
+        roulette("ac-wof5", "STR_Wheel_Of_Fortune_V", 300, "card_r4_icon", reward = CardItem(335)),
         roulette("ac-wof6", "STR_Always_Bet_On_Me", 1_000, "card_r5_icon"),
 
         // Triple-decker — collect n cards.
@@ -167,7 +176,7 @@ object AchievementCatalog {
         Achievement(
             id = "ac-fob",
             labelKey = "STR_FRIEND_OF_BEASTS",
-            iconId = "ff14_thumb_37",
+            iconId = "card_thumb_${Card.idFor(block = 1, number = 37)}",
             requirement = Requirement.CardSetOwned(CardCollection.FF14, BEAST_CARDS),
         ),
     )

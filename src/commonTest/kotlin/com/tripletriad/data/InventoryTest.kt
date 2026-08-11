@@ -1,6 +1,7 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.BoosterItem
+import com.tripletriad.model.CardCollection
 import com.tripletriad.model.BoosterType
 import com.tripletriad.model.CardItem
 import com.tripletriad.model.GameSave
@@ -213,12 +214,15 @@ class InventoryTest {
     /** A duplicate is still consumed; the flag is how the UI knows to say "already owned". */
     @Test
     fun aDuplicateCardIsStillConsumedAndReportedAsNotNew() {
-        val item = CardItem(1)
+        val item = CardItem(GameSave.defaultCards(CardCollection.FF14).first())
         val save = Inventory.add(empty, item)
 
         val drawn = assertIs<ItemUse.CardDrawn>(Inventory.use(save, item))
 
-        assertTrue(1 in empty.cards, "card 1 is in the starter collection")
+        assertTrue(
+            GameSave.defaultCards(CardCollection.FF14).first() in empty.cards,
+            "the card is in the starter collection",
+        )
         assertEquals(false, drawn.wasNew)
         assertTrue(drawn.save.bag.isEmpty())
     }
