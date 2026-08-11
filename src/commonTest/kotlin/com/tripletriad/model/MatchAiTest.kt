@@ -16,7 +16,8 @@ import kotlin.test.assertTrue
  * would break on any change to the random draw order and prove nothing about the strategy.
  */
 class MatchAiTest {
-    private val TEST_BLOCK = 1
+    /** Fixtures live in block 1; ids are global, so a bare number is not one. */
+    private val testBlock = 1
     private fun card(
         id: Int = 1,
         top: Int = 5,
@@ -25,7 +26,7 @@ class MatchAiTest {
         left: Int = 5,
     ) = Card(
         // Fixtures number their cards from 1; ids are global.
-        id = Card.idFor(TEST_BLOCK, id),
+        id = Card.idFor(testBlock, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = top,
@@ -252,7 +253,7 @@ class MatchAiTest {
             Random(1),
         )
 
-        assertEquals(setOf(1), candidates.map { it.card.id }.toSet())
+        assertEquals(setOf(card(1).id), candidates.map { it.card.id }.toSet())
         assertEquals(Board.SIZE, candidates.size)
     }
 

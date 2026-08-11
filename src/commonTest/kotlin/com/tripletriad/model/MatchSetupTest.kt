@@ -14,10 +14,11 @@ import kotlin.test.assertTrue
  * [game-rules.md](../../../../../../../docs/analysis/game-rules.md) § 13.
  */
 class MatchSetupTest {
-    private val TEST_BLOCK = 1
+    /** Fixtures live in block 1; ids are global, so a bare number is not one. */
+    private val testBlock = 1
     private fun card(id: Int) = Card(
         // Fixtures number their cards from 1; ids are global.
-        id = Card.idFor(TEST_BLOCK, id),
+        id = Card.idFor(testBlock, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = 5,

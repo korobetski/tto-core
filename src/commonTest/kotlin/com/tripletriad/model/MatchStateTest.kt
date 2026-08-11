@@ -13,10 +13,11 @@ import kotlin.test.assertTrue
  * transitions, with no stage, no timers and no coroutines.
  */
 class MatchStateTest {
-    private val TEST_BLOCK = 1
+    /** Fixtures live in block 1; ids are global, so a bare number is not one. */
+    private val testBlock = 1
     private fun card(id: Int, power: Int = 5) = Card(
         // Fixtures number their cards from 1; ids are global.
-        id = Card.idFor(TEST_BLOCK, id),
+        id = Card.idFor(testBlock, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = power,
@@ -149,7 +150,7 @@ class MatchStateTest {
 
         assertEquals(CardColor.BLUE, play.player)
         assertEquals(4, play.position)
-        assertEquals(1, play.card.id)
+        assertEquals(card(1).id, play.card.id)
         assertTrue(play.captures.isEmpty(), "nothing adjacent to capture yet")
     }
 
@@ -243,7 +244,7 @@ class MatchStateTest {
         )
         state = state.play(state.currentHand.first(), 4)
         state = state.play(state.currentHand.first(), 1)
-        val capturedId = 11
+        val capturedId = card(11).id
         state = playOut(state)
 
         val rematch = state.suddenDeathRematch()
@@ -275,7 +276,7 @@ class MatchStateTest {
         assertEquals(listOf(card(1).id), state.playableCards().map { it.id })
 
         val next = state.play(state.playableCards().single(), 0)
-        assertEquals(listOf(11), next.playableCards().map { it.id })
+        assertEquals(listOf(card(11).id), next.playableCards().map { it.id })
     }
 
     @Test
@@ -290,7 +291,7 @@ class MatchStateTest {
 
         assertEquals(1, once.size)
         assertEquals(once.map { it.id }, twice.map { it.id })
-        assertTrue(once.single().id in 1..HAND_SIZE)
+        assertTrue(once.single().id in (1..HAND_SIZE).map { card(it).id })
     }
 
     // ---- Ascension -------------------------------------------------------

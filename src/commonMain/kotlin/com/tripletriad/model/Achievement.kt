@@ -137,7 +137,9 @@ data class Achievement(
  */
 object AchievementCatalog {
     /** The thirteen beast cards, `Achievements.as:71`. Also [BoosterType.BEAST]'s pool. */
-    val BEAST_CARDS: List<Int> = listOf(270, 271, 272, 273, 274, 283, 291, 292, 293, 338, 339, 373, 384)
+    val BEAST_CARDS: List<Int> = listOf(
+        270, 271, 272, 273, 274, 283, 291, 292, 293, 338, 339, 373, 384,
+    )
 
     val all: List<Achievement> = listOf(
         // Triple Team — defeat n NPCs.

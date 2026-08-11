@@ -50,10 +50,27 @@ class PveMatchTest {
         cards = listOf(20, 21, 22, 23).map(::ff14),
     )
 
+    /** A block-2 card id — the shipped `ff8` table. */
+    private fun ff8(number: Int) = Card.idFor(block = 2, number = number)
+
+    /**
+     * Ids are global, so a profile's deck has to name cards of the table it plays: an `ff8` profile
+     * holding `ff14` ids used to be unrepresentable and is now merely wrong.
+     */
+    private fun numbering(mode: CardCollection): (Int) -> Int =
+        if (mode == CardCollection.FF8) ::ff8 else ::ff14
+
+    /** The same opponent, drawn from the other shipped table — see [numbering]. */
+    private val ff8Opponent
+        get() = opponent.copy(
+            fetishCards = listOf(11, 12, 13).map(::ff8),
+            cards = listOf(20, 21, 22, 23).map(::ff8),
+        )
+
     private fun profile(
         mode: CardCollection = CardCollection.FF14,
-        cards: Map<Int, Int> = (1..12).associate { ff14(it) to 1 },
-        decks: List<Deck> = listOf(Deck("Starter", (1..5).map(::ff14))),
+        cards: Map<Int, Int> = (1..12).associate { numbering(mode)(it) to 1 },
+        decks: List<Deck> = listOf(Deck("Starter", (1..5).map(numbering(mode)))),
     ) = GameSave.new(createdAt = 0L, mode = mode).copy(cards = cards, decks = decks)
 
     private val seeds = 0 until 40
@@ -73,7 +90,8 @@ class PveMatchTest {
 
     @Test
     fun anFf8ProfileGetsFf8Cards() {
-        val match = PveMatches.assemble(profile(CardCollection.FF8), opponent, catalog, Random(1))
+        val match =
+            PveMatches.assemble(profile(CardCollection.FF8), ff8Opponent, catalog, Random(1))
 
         assertTrue(
             match.setup.state.hands.values.flatten()
@@ -238,7 +256,7 @@ class PveMatchTest {
 
     @Test
     fun anFf8RouletteOpponentDrawsFromTheFf8Pool() {
-        val gambler = opponent.copy(ruleKeys = listOf("RULE_ROULETTE"))
+        val gambler = ff8Opponent.copy(ruleKeys = listOf("RULE_ROULETTE"))
         val pool = Roulette.pool(CardCollection.FF8).toSet()
 
         for (seed in seeds) {
@@ -269,7 +287,7 @@ class PveMatchTest {
 
     @Test
     fun anElementalOpponentGetsAnElementalBoard() {
-        val elemental = opponent.copy(ruleKeys = listOf("RULE_ELEMENTAL"))
+        val elemental = ff8Opponent.copy(ruleKeys = listOf("RULE_ELEMENTAL"))
 
         val match = PveMatches.assemble(profile(CardCollection.FF8), elemental, catalog, Random(1))
 
@@ -367,7 +385,12 @@ class PveMatchTest {
      */
     @Test
     fun anUnresolvableOpponentCardIsAProgrammingError() {
-        val broken = opponent.copy(fetishCards = listOf(1, 2, 3, 4, 999).map(::ff14), cards = emptyList())
+        // 200 is a legal number in block 1 and names no card in this fixture catalog, which
+        // stops at 40 — an unresolvable id now has to be in range to get that far.
+        val broken = opponent.copy(
+            fetishCards = listOf(1, 2, 3, 4, 200).map(::ff14),
+            cards = emptyList(),
+        )
 
         val failure = assertFailsWith<IllegalArgumentException> {
             PveMatches.assemble(profile(), broken, catalog, Random(1))
@@ -409,6 +432,4 @@ class PveMatchTest {
         assertEquals(3, hand.count { it.id == ff14(1) }, "all three copies are drawable")
     }
 
-    private companion object {
-    }
 }

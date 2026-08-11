@@ -165,11 +165,11 @@ class CardRepositoryTest {
     fun idsByRaritiesMatchesTheAs3Helper() = runTest {
         for (repository in repositories()) {
             assertEquals(
-                listOf(1, 2, 3),
+                listOf(1, 2, 3).map(::ff14),
                 repository.idsByRarities(setOf(1, 2), CardCollection.FF14),
             )
             assertEquals(
-                listOf(1, 2, 3, 4),
+                listOf(1, 2, 3, 4).map(::ff14),
                 repository.idsByRarities((1..5).toSet(), CardCollection.FF14),
             )
             assertTrue(repository.idsByRarities(emptySet(), CardCollection.FF14).isEmpty())

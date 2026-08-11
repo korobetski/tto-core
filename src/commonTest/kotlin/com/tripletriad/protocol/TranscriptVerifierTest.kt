@@ -33,7 +33,8 @@ import kotlin.test.assertNotEquals
  * must still count, or the design has bought integrity by taking the game away.
  */
 class TranscriptVerifierTest {
-    private val TEST_BLOCK = 1
+    /** Fixtures live in block 1; ids are global, so a bare number is not one. */
+    private val testBlock = 1
 
     // ---- The honest case --------------------------------------------------
 
@@ -265,7 +266,7 @@ class TranscriptVerifierTest {
 
     private fun card(id: Int) = Card(
         // Fixtures number their cards from 1; ids are global.
-        id = Card.idFor(TEST_BLOCK, id),
+        id = Card.idFor(testBlock, id),
         nameKey = "STR_TEST_$id",
         name = "Test $id",
         top = (id % 9) + 1,
@@ -284,8 +285,8 @@ class TranscriptVerifierTest {
         id = 1,
         nameKey = "STR_NPC_Test",
         iconId = "test-npc",
-        fetishCards = listOf(11, 12, 13),
-        cards = listOf(20, 21, 22, 23),
+        fetishCards = listOf(11, 12, 13).map { Card.idFor(block = 1, number = it) },
+        cards = listOf(20, 21, 22, 23).map { Card.idFor(block = 1, number = it) },
     )
 
     private val npcs = NpcCatalog(ff14 = listOf(opponent), ff8 = emptyList())
@@ -295,11 +296,12 @@ class TranscriptVerifierTest {
     private companion object {
         const val SEED = 20260807
 
-        val DECK = listOf(1, 2, 3, 4, 5)
-        val OWNED = (1..12).associateWith { 1 }
+        // Fixtures number their cards from 1; the ids they resolve to are global.
+        val DECK = (1..5).map { Card.idFor(block = 1, number = it) }
+        val OWNED = (1..12).associate { Card.idFor(block = 1, number = it) to 1 }
 
         /** Outside every hand: the deck is 1..5 and the opponent draws from 11..13 and 20..23. */
-        const val CARD_NOT_IN_ANY_HAND = 39
+        val CARD_NOT_IN_ANY_HAND = Card.idFor(block = 1, number = 39)
 
         /** Nine cells, plus the one card left in the winner's hand. */
         const val TOTAL_CARDS = 10
