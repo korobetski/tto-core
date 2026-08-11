@@ -217,8 +217,10 @@ data class GameSave(
      */
     @SerialName("CARDS")
     @Serializable(with = CardCopiesSerializer::class)
-    val cards: Map<Int, Int> = DEFAULT_COLLECTION,
-    @SerialName("DECKS") val decks: List<Deck> = listOf(Deck(DEFAULT_DECK_NAME, DEFAULT_CARDS)),
+    val cards: Map<Int, Int> = defaultCollection(CardCollection.FF14),
+    @SerialName("DECKS")
+    val decks: List<Deck> =
+        listOf(Deck(DEFAULT_DECK_NAME, defaultCards(CardCollection.FF14))),
     @SerialName("STATS") val stats: Stats = Stats(),
     /** The inventory. `Save.as:33` — a list of `Item.__toJSON()` objects. */
     @SerialName("BAG") val bag: List<Item> = emptyList(),
@@ -437,11 +439,27 @@ data class GameSave(
         /** `Save.as:35`. */
         const val STARTING_MGP = 100
 
-        /** `Save.as:30`. The same five ids seed the collection and the starter deck. */
-        val DEFAULT_CARDS: List<Int> = listOf(257, 259, 262, 263, 266)
+        /**
+         * `Save.as:30`. The same five **numbers** seed the collection and the starter deck.
+         *
+         * Numbers, not ids, and the distinction is the whole of the change: these used to be read
+         * through `MODE`, so a new FFVIII character was given the first, third, sixth, seventh and
+         * tenth FFVIII cards. Ids are global now, so a bare `1` names a card in block 1 whatever
+         * table the character plays — and an FFVIII character would start holding five FFXIV cards
+         * it cannot field. [defaultCards] resolves them against the set instead.
+         *
+         * `docs/migration/19-CARD-SETS-AND-FORMATS.md` deletes all of this in favour of a starter
+         * pack chosen per set, which is the real answer; this is the bridge until then.
+         */
+        val DEFAULT_CARD_NUMBERS: List<Int> = listOf(1, 3, 6, 7, 10)
 
-        /** [DEFAULT_CARDS], one copy each — the shape [cards] holds. */
-        val DEFAULT_COLLECTION: Map<Int, Int> = DEFAULT_CARDS.associateWith { 1 }
+        /** [DEFAULT_CARD_NUMBERS] as ids in [collection]'s own set. */
+        fun defaultCards(collection: CardCollection): List<Int> =
+            DEFAULT_CARD_NUMBERS.map { Card.idFor(block = collection.block, number = it) }
+
+        /** [defaultCards], one copy each — the shape [cards] holds. */
+        fun defaultCollection(collection: CardCollection): Map<Int, Int> =
+            defaultCards(collection).associateWith { 1 }
 
         /**
          * A brand-new profile.
@@ -460,6 +478,10 @@ data class GameSave(
             creationDate = createdAt,
             lastSave = createdAt,
             mode = mode,
+            // Not the field defaults: those can only name one set, and this is where the set is
+            // finally known. See [DEFAULT_CARD_NUMBERS].
+            cards = defaultCollection(mode),
+            decks = listOf(Deck(DEFAULT_DECK_NAME, defaultCards(mode))),
         )
     }
 }

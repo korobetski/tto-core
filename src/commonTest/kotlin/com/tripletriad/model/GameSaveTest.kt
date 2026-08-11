@@ -28,10 +28,10 @@ class GameSaveTest {
         assertEquals("Kuplu Kopo", save.username)
         assertEquals(CardCollection.FF14, save.mode)
         assertEquals(0, save.admin)
-        assertEquals(GameSave.DEFAULT_COLLECTION, save.cards)
+        assertEquals(GameSave.defaultCollection(CardCollection.FF14), save.cards)
         assertEquals(1, save.decks.size)
         assertEquals("Starter deck", save.decks.first().name)
-        assertEquals(GameSave.DEFAULT_CARDS, save.decks.first().cards)
+        assertEquals(GameSave.defaultCards(CardCollection.FF14), save.decks.first().cards)
         assertEquals(Stats(), save.stats)
         assertTrue(save.bag.isEmpty())
         assertEquals(Boons(), save.boons)
@@ -54,7 +54,7 @@ class GameSaveTest {
     @Test
     fun theStarterDeckIsComplete() {
         assertTrue(GameSave.new(createdAt = 0).decks.first().isComplete)
-        assertEquals(HAND_SIZE, GameSave.DEFAULT_CARDS.size)
+        assertEquals(HAND_SIZE, GameSave.defaultCards(CardCollection.FF14).size)
     }
 
     @Test
@@ -118,7 +118,7 @@ class GameSaveTest {
 
         assertEquals("Sparse", save.username)
         assertEquals(CardCollection.FF14, save.mode)
-        assertEquals(GameSave.DEFAULT_COLLECTION, save.cards)
+        assertEquals(GameSave.defaultCollection(CardCollection.FF14), save.cards)
         assertTrue(save.achievements.isEmpty())
     }
 

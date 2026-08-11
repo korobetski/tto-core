@@ -36,7 +36,10 @@ class AchievementTest {
         assertEquals("STR_FRIEND_OF_BEASTS", AchievementCatalog["ac-fob"]!!.labelKey)
         // `Achievements.as:17` — a numeric FFXIV icon id for the whole Triple Team tier.
         assertEquals("000713", AchievementCatalog["ac-tt3"]!!.iconId)
-        assertEquals("ff14_thumb_37", AchievementCatalog["ac-fob"]!!.iconId)
+        assertEquals(
+            "card_thumb_${Card.idFor(block = 1, number = 37)}",
+            AchievementCatalog["ac-fob"]!!.iconId,
+        )
     }
 
     /** Only three of the 22 carry a reward: `ac-tt3`, `ac-wof5`, and nothing else. */

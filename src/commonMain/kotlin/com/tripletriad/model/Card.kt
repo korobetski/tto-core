@@ -91,16 +91,22 @@ enum class CardType {
  * is already a set reference rather than an index, and the day formats land it is deleted rather
  * than rewritten.
  *
- * The serial names keep their trailing underscore because they are what `Save.DATAS.MODE` holds on
- * disk, and a save written before this change must still parse.
+ * @property storageKey what this collection is **written as**, trailing underscore included: the
+ *   save's `MODE`, the server's `matches.collection` column, and the canonical transcript digest.
+ *   It used to be called `prefix`, because it was also the texture-name prefix and the key the two
+ *   card tables were looked up by; ids are global now, so the only job left is being the string
+ *   already on disk. Renamed rather than deleted for exactly that reason — changing the value would
+ *   need a migration and would mislabel every stored match, and this column becomes `format_id` in
+ *   `docs/migration/19-CARD-SETS-AND-FORMATS.md` anyway.
+ * @property slug what a path, a URL and a human use. The same string a [CardSet] carries.
  */
 @Serializable
-enum class CardCollection(val block: Int, val slug: String) {
+enum class CardCollection(val block: Int, val slug: String, val storageKey: String) {
     @SerialName("ff14_")
-    FF14(1, "ff14"),
+    FF14(1, "ff14", "ff14_"),
 
     @SerialName("ff8_")
-    FF8(2, "ff8"),
+    FF8(2, "ff8", "ff8_"),
     ;
 
     companion object {
@@ -109,6 +115,10 @@ enum class CardCollection(val block: Int, val slug: String) {
 
         /** The collection named `"ff14"`, or null. */
         fun forSlug(slug: String): CardCollection? = entries.firstOrNull { it.slug == slug }
+
+        /** The collection a stored `"ff14_"` names, or null. See [storageKey]. */
+        fun forStorageKey(key: String): CardCollection? =
+            entries.firstOrNull { it.storageKey == key }
     }
 }
 

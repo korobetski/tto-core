@@ -104,7 +104,9 @@ sealed interface Requirement {
  * @property labelKey i18n key, e.g. `STR_Triple_Team_I`. Mixed case in the original, kept verbatim
  *   because it is a lookup key in the locale bundles.
  * @property iconId texture name. Note the tiers reuse `card_r{n}_icon` to signal difficulty, and
- *   `ac-fob` uses a card thumbnail (`ff14_thumb_37`).
+ *   `ac-fob` uses a card thumbnail, named `card_thumb_<card id>` — it was `ff14_thumb_37`, and the
+ *   prefix went with the collection that justified it. The client turns the id into an atlas frame
+ *   name; see `thumbTextureId`.
  * @property reward granted into the bag on earning it. Only three achievements have one.
  */
 data class Achievement(
@@ -174,7 +176,7 @@ object AchievementCatalog {
         Achievement(
             id = "ac-fob",
             labelKey = "STR_FRIEND_OF_BEASTS",
-            iconId = "ff14_thumb_37",
+            iconId = "card_thumb_${Card.idFor(block = 1, number = 37)}",
             requirement = Requirement.CardSetOwned(CardCollection.FF14, BEAST_CARDS),
         ),
     )
