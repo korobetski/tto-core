@@ -153,17 +153,27 @@ class MatchRewardsTest {
         }
     }
 
-    /** The fee is not deducted, so every result is a net gain. See [Npc.mgpFor]. */
+    /**
+     * The fee is not deducted, so every result is a net gain. See [Npc.mgpFor].
+     *
+     * **The quests are added back deliberately.** `MatchReward.mgp` is *what the match paid*, and a
+     * quest's MGP is on purpose not folded into it — see that property's own KDoc — so the purse
+     * moves by the two together. This test used to compare against the match alone and passed only
+     * because the day's draw happened to hold nothing the fixture's match could finish. It broke
+     * the moment the draw changed, which is the right way round: it was accidentally true, and is
+     * now true on purpose.
+     */
     @Test
     fun everyResultPaysSomethingAndTheFeeIsNeverCharged() {
         for (result in MatchResult.entries) {
             val credited = credit(result)
+            val quests = credited.reward.quests.sumOf { it.reward.mgp }
 
             assertTrue(credited.reward.mgp > 0, "$result paid ${credited.reward.mgp}")
             assertEquals(
-                profile.mgp + credited.reward.mgp,
+                profile.mgp + credited.reward.mgp + quests,
                 credited.save.mgp,
-                "$result should add exactly what it reports",
+                "$result should add what it reports, plus what its quests paid",
             )
         }
     }

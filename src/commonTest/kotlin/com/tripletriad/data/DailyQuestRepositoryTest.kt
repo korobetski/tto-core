@@ -211,16 +211,22 @@ class DailyQuestRepositoryTest {
         )
     }
 
-    /** The PvP objective is never drawn, so a PvE-only build offers nothing impossible. */
+    /**
+     * The PvP objective is drawn like any other, now that there is player-versus-player to satisfy
+     * it.
+     *
+     * Asserted over five hundred creation dates rather than one, because a draw of three from
+     * eight legitimately misses any given quest most of the time — a single seed proves nothing in
+     * either direction.
+     */
     @Test
-    fun thePvpObjectiveIsNeverDrawn() {
-        for (created in 1L..500L) {
-            val drawn = DailyQuestCatalog.forDay(DAY_ONE, created)
-            assertTrue(
-                drawn.none { it.objective == Objective.PlayPvpMatch },
-                "creation date $created drew the PvP quest",
-            )
+    fun thePvpObjectiveIsDrawnLikeAnyOther() {
+        val drawnFor = (1L..500L).count { created ->
+            DailyQuestCatalog.forDay(DAY_ONE, created)
+                .any { it.objective == Objective.PlayPvpMatch }
         }
+
+        assertTrue(drawnFor > 0, "the PvP quest was drawn for none of 500 characters")
     }
 
     private fun mgpOfOtherQuestsIn(award: QuestAward, exclude: String): Int =

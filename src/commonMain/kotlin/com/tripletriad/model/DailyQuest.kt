@@ -205,15 +205,22 @@ object DailyQuestCatalog {
     )
 
     /**
-     * Those a day may actually draw.
+     * Those a day may actually draw, which is now all of them.
      *
-     * Player versus player does not exist, so `q-pvp-1` is excluded. A quest that cannot be
-     * finished is a third of a day's offer wasted, every day, for every player — worse than the
-     * dashboard's greyed Multiplayer card, which costs nothing but a row. Delete this filter the
-     * day PvP ships.
+     * This used to exclude `q-pvp-1`: player versus player did not exist, and a quest that cannot
+     * be finished is a third of a day's offer wasted, every day, for every player. **PvP ships**,
+     * so the exclusion is history rather than policy.
+     *
+     * The property stays rather than collapsing into [all]. They answer different questions — what
+     * exists, and what may be offered today — and they will part again the moment a quest is
+     * retired, seasonal, or gated on something a profile has not reached.
+     *
+     * ⚠️ **A drawn PvP quest is finishable only with a server.** An offline profile can be offered
+     * one it cannot complete, and that is the price of the filter going: the alternative is a draw
+     * that depends on connectivity, which would change under a player the moment their train went
+     * into a tunnel. A fixed draw they cannot finish today is better than a shifting one.
      */
-    val assignable: List<DailyQuest>
-        get() = all.filterNot { it.objective == Objective.PlayPvpMatch }
+    val assignable: List<DailyQuest> get() = all
 
     private val byId: Map<String, DailyQuest> = all.associateBy { it.id }
 

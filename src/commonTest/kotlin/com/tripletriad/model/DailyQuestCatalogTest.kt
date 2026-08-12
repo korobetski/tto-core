@@ -9,34 +9,32 @@ import kotlin.test.assertTrue
  *
  * A quest a player cannot finish is a third of a day's offer wasted, every day. A quest whose
  * opponent does not exist is the same thing with a worse symptom — it looks completable.
+ *
+ * One exception is now deliberate and documented rather than caught here: an **offline** profile
+ * can draw the PvP quest and be unable to finish it. See [DailyQuestCatalog.assignable].
  */
 class DailyQuestCatalogTest {
 
     /**
-     * Nothing drawable can be impossible.
+     * Everything that exists may be drawn.
      *
-     * Two ways it could be: the PvP objective, which has no player-versus-player to satisfy it,
-     * and an opponent id that names nobody. Both would reach a player as a quest that simply never
-     * advances, with nothing on screen to explain why.
-     *
-     * Delete the first assertion the day PvP ships — and note the filter it guards is what makes
-     * that a one-line change.
+     * This used to assert the opposite of its own name: the PvP objective was defined and filtered
+     * out, because nothing could satisfy it. **PvP ships**, so the two lists are one again — and
+     * the assertion is kept, pointing the other way, because "what exists" and "what may be
+     * offered" are still separate questions and this is where they are checked to agree.
      */
     @Test
-    fun everyAssignableQuestIsCompletable() {
-        val impossible = DailyQuestCatalog.assignable
-            .filter { it.objective == Objective.PlayPvpMatch }
-
-        assertTrue(impossible.isEmpty(), "not completable yet: ${impossible.map { it.id }}")
+    fun everythingThatExistsMayBeDrawn() {
+        assertEquals(DailyQuestCatalog.all, DailyQuestCatalog.assignable)
     }
 
-    /** And the PvP quest is still *defined*, so the type is settled before it is needed. */
+    /** And the PvP quest is one of them, exactly once. */
     @Test
-    fun thePvpQuestExistsButIsNotDrawn() {
+    fun thePvpQuestIsDefinedAndDrawable() {
         val pvp = DailyQuestCatalog.all.filter { it.objective == Objective.PlayPvpMatch }
 
         assertEquals(1, pvp.size)
-        assertTrue(pvp.single() !in DailyQuestCatalog.assignable)
+        assertTrue(pvp.single() in DailyQuestCatalog.assignable)
     }
 
     /**
