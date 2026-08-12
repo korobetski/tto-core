@@ -1,0 +1,206 @@
+package com.tripletriad.protocol
+
+import com.tripletriad.model.Card
+import com.tripletriad.model.CardCollection
+import com.tripletriad.model.CardColor
+import com.tripletriad.model.GameRules
+import com.tripletriad.model.HAND_SIZE
+import com.tripletriad.model.HandVisibility
+import com.tripletriad.model.MatchState
+import com.tripletriad.model.MatchView
+import com.tripletriad.model.OpenRule
+import kotlinx.serialization.json.Json
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * The PvP wire format.
+ *
+ * **The test that justifies the file is [theOpponentsHiddenCardsAreNotOnTheWireAtAll].** Everything
+ * else here is a round trip; that one is the security claim the whole design rests on, and it is
+ * asserted against the encoded JSON text rather than against the object — because "the field is
+ * null" and "the number is nowhere in the payload" are different guarantees, and only the second
+ * one survives a client that reads the raw body.
+ */
+class PvpMatchTest {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private fun card(id: Int, power: Int = 5) = Card(
+        id = Card.idFor(block = 1, number = id),
+        nameKey = "STR_TEST_$id",
+        name = "Test $id",
+        top = power,
+        right = power,
+        bottom = power,
+        left = power,
+        rarity = 1,
+    )
+
+    private fun hand(from: Int, power: Int = 5) =
+        (from until from + HAND_SIZE).map { card(it, power) }
+
+    private val state = MatchState.start(
+        blueHand = hand(from = 1, power = 8),
+        redHand = hand(from = 11, power = 2),
+        first = CardColor.BLUE,
+    )
+
+    /** Every card either side holds, which is what a real client resolves ids against. */
+    private val catalogue: Map<Int, Card> =
+        state.hands.values.flatten().associateBy { it.id }
+
+    private fun wire(
+        state: MatchState = this.state,
+        side: CardColor = CardColor.BLUE,
+        visibility: HandVisibility = HandVisibility.HIDDEN,
+    ) = PvpMatchView.of(
+        view = MatchView.of(state, side, visibility),
+        matchId = "m-1",
+        opponentName = "Kuplu",
+        collection = CardCollection.FF14,
+    )
+
+    /**
+     * A hidden card's id appears nowhere in the encoded payload.
+     *
+     * Not `assertNull(view.opponentHand[0])` — that would pass just as well if the id were also
+     * carried in some other field "for convenience". The claim is about the bytes.
+     */
+    @Test
+    fun theOpponentsHiddenCardsAreNotOnTheWireAtAll() {
+        val encoded = json.encodeToString(PvpMatchView.serializer(), wire())
+
+        for (hidden in state.hands.getValue(CardColor.RED)) {
+            assertFalse(
+                "${hidden.id}" in encoded,
+                "card ${hidden.id} leaked into the payload: $encoded",
+            )
+        }
+        // And the payload is not empty of ids in general, or the assertion above would be vacuous.
+        for (own in state.hands.getValue(CardColor.BLUE)) {
+            assertTrue("${own.id}" in encoded, "own card ${own.id} is missing")
+        }
+    }
+
+    /** Three Open puts three ids on the wire and withholds two, in their own slots. */
+    @Test
+    fun anOpenRuleRevealsExactlyTheSlotsItNames() {
+        val visible = setOf(0, 2, 4)
+        val red = state.hands.getValue(CardColor.RED)
+
+        val view = wire(visibility = HandVisibility(visible))
+
+        assertEquals(HAND_SIZE, view.opponentHand.size)
+        for (index in view.opponentHand.indices) {
+            if (index in visible) {
+                assertEquals(red[index].id, view.opponentHand[index], "slot $index")
+            } else {
+                assertNull(view.opponentHand[index], "slot $index leaked")
+            }
+        }
+    }
+
+    /** Encoded and decoded, a view is the same view. */
+    @Test
+    fun aViewSurvivesTheRoundTrip() {
+        val sent = wire(visibility = HandVisibility(setOf(1, 3)))
+
+        val received = json.decodeFromString(
+            PvpMatchView.serializer(),
+            json.encodeToString(PvpMatchView.serializer(), sent),
+        )
+
+        assertEquals(sent, received)
+    }
+
+    /**
+     * And it rebuilds into the model the screen renders — the same one the server projected.
+     *
+     * The two directions are asserted against each other rather than each against a fixture,
+     * because what has to hold is that they agree, not that either matches something written by
+     * hand in this file.
+     */
+    @Test
+    fun theProjectionAndTheReconstructionAgree() {
+        val original = MatchView.of(state, CardColor.BLUE, HandVisibility(setOf(0, 1)))
+
+        val rebuilt = PvpMatchView
+            .of(original, "m-1", "Kuplu", CardCollection.FF14)
+            .toMatchView(catalogue)
+
+        assertNotNull(rebuilt)
+        assertEquals(original.side, rebuilt.side)
+        assertContentEquals(original.ownHand, rebuilt.ownHand)
+        assertContentEquals(original.opponentHand, rebuilt.opponentHand)
+        assertEquals(original.board, rebuilt.board)
+        assertEquals(original.score, rebuilt.score)
+        assertEquals(original.playableHandIndices, rebuilt.playableHandIndices)
+        assertEquals(original.isMyTurn, rebuilt.isMyTurn)
+    }
+
+    /** A played card is on the board for both sides, with its new owner. */
+    @Test
+    fun theBoardCrossesTheWireWithOwnership() {
+        val played = state.let { it.play(it.currentHand.first(), position = 4) }
+        val blue = state.hands.getValue(CardColor.BLUE).first()
+
+        val view = wire(played, CardColor.RED)
+
+        assertEquals(PvpCell(blue.id, CardColor.BLUE), view.cells[4])
+        assertEquals(8, view.cells.count { it == null })
+    }
+
+    /**
+     * An id the catalogue does not know refuses the whole view rather than dropping a card.
+     *
+     * A board with a hole in it is a match a player cannot reason about. Refusing is what turns a
+     * catalogue mismatch into something reportable instead of a strange-looking game.
+     */
+    @Test
+    fun anUnknownCardRefusesTheView() {
+        val view = wire().copy(hand = listOf(999_999))
+
+        assertNull(view.toMatchView(catalogue))
+    }
+
+    /** The stake is a closed pair, and both survive the wire. */
+    @Test
+    fun bothStakesRoundTrip() {
+        for (stake in listOf(PvpStake.None, PvpStake.Cards(261, 271))) {
+            val sent = wire().copy(stake = stake)
+
+            val received = json.decodeFromString(
+                PvpMatchView.serializer(),
+                json.encodeToString(PvpMatchView.serializer(), sent),
+            )
+
+            assertEquals(stake, received.stake)
+        }
+    }
+
+    /** The waiting side is sent no playable slots, so a client cannot offer a move out of turn. */
+    @Test
+    fun theWaitingSideIsSentNothingToPlay() {
+        val blue = wire(side = CardColor.BLUE)
+        val red = wire(side = CardColor.RED)
+
+        assertEquals(HAND_SIZE, blue.playable.size)
+        assertTrue(red.playable.isEmpty())
+    }
+
+    /** All Open is the one case where the opponent's whole hand is legitimately on the wire. */
+    @Test
+    fun allOpenSendsTheWholeHandOnPurpose() {
+        val red = state.hands.getValue(CardColor.RED)
+        val open = state.copy(rules = GameRules(open = OpenRule.ALL_OPEN))
+
+        val view = wire(open, visibility = HandVisibility(red.indices.toSet()))
+
+        assertContentEquals(red.map { it.id }, view.opponentHand)
+    }
+}

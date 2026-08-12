@@ -378,4 +378,81 @@ object MatchPreparation {
             intro = introSteps(rules, rematch = true),
         )
     }
+
+    /**
+     * Assembles a match between two people, with a visibility for **each** side.
+     *
+     * ### Why [prepare] could not be reused
+     *
+     * It reports one `opponentVisibility`, and says why: "the reverse direction is not modelled —
+     * the original always shows a player their own cards". That holds while one of the two sides is
+     * a program the same process is running. With two people there are two audiences, each entitled
+     * to a different half of the truth, and under Three Open they are **not mirror images**: the
+     * rule reveals three cards drawn at random per hand, so blue may be showing slots 0, 2 and 4
+     * while red is showing 1, 2 and 3.
+     *
+     * Deriving red's view from blue's would therefore be wrong rather than merely missing, and
+     * wrong in the direction that leaks: whichever slots blue happened to reveal would be the ones
+     * red was told about.
+     *
+     * ### What it does not do
+     *
+     * No `HandSource`, and so no `RULE_RANDOM` hand build. Where a person's five cards come from is
+     * the caller's business — the server resolves each player's chosen deck, or draws from their
+     * own collection, against the profile it holds. This takes the two hands as settled and applies
+     * only what is *joint*: the swap, the elements, the turn order and the two visibilities.
+     *
+     * @param first who starts. Not a coin flip: the server decides, so that neither client can roll
+     *   until it likes the answer. [CoinFlip] is still what the screens animate — it is handed the
+     *   settled winner rather than tossing its own.
+     */
+    fun prepareVersus(
+        blueHand: List<Card>,
+        redHand: List<Card>,
+        first: CardColor,
+        rules: GameRules = GameRules(),
+        random: Random = Random.Default,
+    ): PvpSetup {
+        val (blue, red) = if (rules.swap) swap(blueHand, redHand, random) else blueHand to redHand
+
+        return PvpSetup(
+            state = MatchState.start(
+                blueHand = blue,
+                redHand = red,
+                first = first,
+                rules = rules,
+                elements = elementsFor(rules, random),
+            ),
+            // Two draws, not one applied twice. See the KDoc above.
+            blueSeesRed = HandVisibility.forRule(rules.open, red, random),
+            redSeesBlue = HandVisibility.forRule(rules.open, blue, random),
+            intro = introSteps(rules),
+        )
+    }
+}
+
+/**
+ * A match between two people, ready to play.
+ *
+ * The two-audience counterpart of [MatchSetup]. It carries no `coinFlip` because there was no toss:
+ * the server settled the order, and a screen that wants to animate one builds a [CoinFlip] from the
+ * winner it is told.
+ *
+ * @property blueSeesRed what blue may see of red's hand.
+ * @property redSeesBlue what red may see of blue's hand. Independent of [blueSeesRed] — under Three
+ *   Open the two are separate draws.
+ */
+data class PvpSetup(
+    val state: MatchState,
+    val blueSeesRed: HandVisibility,
+    val redSeesBlue: HandVisibility,
+    val intro: List<MatchIntroStep>,
+) {
+    /** What [side] may see of the other hand — the argument [MatchView.of] wants. */
+    fun visibilityFor(side: CardColor): HandVisibility =
+        if (side == CardColor.BLUE) blueSeesRed else redSeesBlue
+
+    /** [state] as [side] sees it. */
+    fun viewFor(side: CardColor, random: Random = Random.Default): MatchView =
+        MatchView.of(state, side, visibilityFor(side), random)
 }

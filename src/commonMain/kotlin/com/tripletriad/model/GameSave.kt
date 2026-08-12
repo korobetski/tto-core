@@ -196,6 +196,11 @@ data class Deck(
  * note there; `UInt` buys a range no card comes near and costs interoperability with every list
  * API.
  */
+// Twenty-one small readers and copiers on the one type the whole game is *about*. The threshold is
+// there to catch a class doing too many jobs; this one does a single job — be the profile — and
+// every function is two or three lines that keep a `copy(…)` out of a call site. Suppressed here
+// rather than by raising the repo-wide threshold, so nothing else inherits the exemption.
+@Suppress("TooManyFunctions")
 @Serializable
 data class GameSave(
     @SerialName("USERNAME") val username: String = DEFAULT_USERNAME,
@@ -367,6 +372,36 @@ data class GameSave(
     fun withCard(cardId: Int, copies: Int = 1): GameSave {
         require(copies > 0) { "copies must be positive, was $copies" }
         return copy(cards = cards + (cardId to copiesOf(cardId) + copies))
+    }
+
+    /**
+     * Removes [copies] of [cardId], dropping the entry entirely when the last one goes.
+     *
+     * The inverse of [withCard], and the only thing in this game that takes a card **away** from a
+     * player. It exists for the player-versus-player card wager — the classic Triple Triad stake,
+     * and the one irreversible thing that can happen to a collection.
+     *
+     * Dropping the key rather than leaving a zero is not tidiness. `cards` is read as a multiset by
+     * [copiesOf], [ownsCard] and [ownedCardIds], and a `0` entry would answer "owned" to anything
+     * that asked with `containsKey` — which is the mistake a reader is most likely to make. No
+     * state makes a zero meaningful, so none is stored.
+     *
+     * **The decks are deliberately left alone.** A deck that named the last copy is now
+     * unaffordable, and the right thing already happens without touching it:
+     * `PveMatch.playableDecks` filters on [Deck.isAffordable] *live*, and its KDoc says why — "a
+     * stored deck can become unaffordable without being edited". Pruning the card out here would
+     * silently rewrite something the player built, as a side effect of losing a match, and hand
+     * them back a four-card deck they never made. Leaving it means the deck is refused with its
+     * five cards intact and repairs itself the moment another copy is obtained.
+     *
+     * Floors at zero rather than throwing. Whether a wager was legal is the server's to check
+     * before the match starts; a credit path that threw halfway through would leave a match half
+     * settled, which is worse than a subtraction that cannot go negative.
+     */
+    fun withoutCard(cardId: Int, copies: Int = 1): GameSave {
+        require(copies > 0) { "copies must be positive, was $copies" }
+        val left = copiesOf(cardId) - copies
+        return copy(cards = if (left > 0) cards + (cardId to left) else cards - cardId)
     }
 
     /**
