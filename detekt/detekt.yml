@@ -35,6 +35,13 @@ naming:
     constantPattern: '[A-Za-z][_A-Za-z0-9]*'
 
 style:
+  ReturnCount:
+    # A guard clause is not a return path worth counting. `val npc = npcs.byIcon(…) ?: return …` is
+    # the idiomatic Kotlin alternative to nesting the rest of a function in an `if`, and counting
+    # each one pushes code towards exactly the nesting this rule exists to prevent. Returns in the
+    # *body* are still counted. The same override, for the same reason, is in the client's and the
+    # server's configs.
+    excludeGuardClauses: true
   MagicNumber:
     # The whole point of the UI layer here is to reproduce literal coordinates read out
     # of the AS3 source. Every one of them is commented with its origin; extracting

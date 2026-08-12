@@ -1,6 +1,8 @@
 package com.tripletriad.protocol
 
 import com.tripletriad.data.CardCatalog
+import com.tripletriad.data.Format
+import com.tripletriad.data.FormatCatalog
 import com.tripletriad.data.NpcCatalog
 import com.tripletriad.data.PveMatches
 import com.tripletriad.model.CardColor
@@ -70,6 +72,7 @@ object TranscriptVerifier {
         transcript: MatchTranscript,
         cards: CardCatalog,
         npcs: NpcCatalog,
+        formats: FormatCatalog,
         owner: GameSave? = null,
     ): MatchVerdict {
         // Version first, before any field is read. A transcript from a format this build does not
@@ -81,7 +84,16 @@ object TranscriptVerifier {
             )
         }
 
-        val npc = npcs.byIcon(transcript.opponentIconId, transcript.collection)
+        // The format this match was played under, resolved from the transcript's own collection
+        // rather than trusted from a field: a transcript that could *name* its format could name a
+        // generous one. It decides two things — which opponents exist, and what the roulette may
+        // draw — so it is resolved once, here, and handed to both.
+        val format = formats[transcript.formatId] ?: return rejected(
+            RejectionReason.UNDEALABLE,
+            "no such format: ${transcript.formatId}",
+        )
+
+        val npc = npcs.byIcon(transcript.opponentIconId, format.id)
 
         // Whose card list decides. With an owner this is the server's own record, which is the
         // check that pure peer-to-peer could not make; without one it is the claimant's, which
@@ -97,15 +109,7 @@ object TranscriptVerifier {
         return when {
             npc == null -> rejected(
                 RejectionReason.UNKNOWN_OPPONENT,
-                "no opponent '${transcript.opponentIconId}' in ${transcript.collection}",
-            )
-
-            // A profile plays one collection. A transcript naming the other is not a forgery
-            // worth a special reason — it is a deck of cards this profile does not own, and
-            // saying so is both true and the same answer the card check would give.
-            owner != null && owner.mode != transcript.collection -> rejected(
-                RejectionReason.DECK_NOT_OWNED,
-                "this profile plays ${owner.mode}, the transcript claims ${transcript.collection}",
+                "no opponent '${transcript.opponentIconId}' in ${transcript.formatId}",
             )
 
             overdrawn.isNotEmpty() -> rejected(
@@ -115,7 +119,7 @@ object TranscriptVerifier {
                 ) { (id, used) -> "card $id used $used, owned ${owned[id] ?: 0}" },
             )
 
-            else -> dealAndReplay(transcript, cards, npc, owned)
+            else -> dealAndReplay(transcript, cards, npc, owned, format)
         }
     }
 
@@ -131,11 +135,12 @@ object TranscriptVerifier {
         cards: CardCatalog,
         npc: Npc,
         owned: Map<Int, Int>,
+        format: Format,
     ): MatchVerdict {
         val random = Random(transcript.seed)
 
         return runCatching {
-            PveMatches.assemble(profileFor(transcript, owned), npc, cards, random)
+            PveMatches.assemble(profileFor(transcript, owned), npc, cards, format, random)
         }.fold(
             onSuccess = { replay(it.setup.state, transcript.moves, random) },
             onFailure = { failure ->
@@ -242,7 +247,6 @@ object TranscriptVerifier {
      * the ones dealt.
      */
     private fun profileFor(transcript: MatchTranscript, owned: Map<Int, Int>): GameSave = GameSave(
-        mode = transcript.collection,
         cards = owned,
         decks = listOf(Deck(SUBMITTED_DECK_NAME, transcript.deck)),
     )

@@ -1,6 +1,5 @@
 package com.tripletriad.protocol
 
-import com.tripletriad.model.CardCollection
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -38,7 +37,12 @@ import kotlinx.serialization.Serializable
  * @property version the format. Checked before anything else, because a transcript this build
  *   cannot read must be refused rather than misread.
  * @property seed the whole of the randomness. Everything derived is derived from it.
- * @property collection which of the two card tables this profile is in.
+ * @property formatId the format the match was played in, by `Format.id`.
+ *
+ * Replaced `collection`, which named one of two card tables and was the wire's copy of `MODE`. A
+ * match is played *in a format* — that decides which opponents exist, which cards are legal and
+ * what the roulette may draw — and the server resolves all three from this one field rather than
+ * from a profile that no longer has a collection to check against.
  * @property opponentIconId the opponent, by icon id — **not** by `id`, which is not unique.
  * @property deck the five card ids brought to the match, in the order they were selected.
  * @property ownedCards every card the profile owns, id to copies held. Read under `RULE_RANDOM`,
@@ -51,7 +55,7 @@ import kotlinx.serialization.Serializable
 data class MatchTranscript(
     @SerialName("v") val version: Int = TRANSCRIPT_VERSION,
     val seed: Int,
-    val collection: CardCollection,
+    val formatId: String,
     val opponentIconId: String,
     val deck: List<Int>,
     val ownedCards: Map<Int, Int>,
@@ -132,7 +136,7 @@ enum class RejectionReason {
     /** [MatchTranscript.version] is not one this build reads. */
     UNSUPPORTED_VERSION,
 
-    /** No opponent with that icon id in that collection. */
+    /** No opponent with that icon id in that format. */
     UNKNOWN_OPPONENT,
 
     /** A card id in the deck is not one the profile owns. */
@@ -160,5 +164,9 @@ enum class RejectionReason {
  *
  * **2** — `ownedCards` became id-to-copies, and a deck may no longer use more copies of a card than
  * are owned. `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § 1.
+ *
+ * **3** — `collection` became [MatchTranscript.formatId]. `MODE` is gone, so a transcript names the
+ * format it was played in rather than the table its author belonged to.
+ * `docs/migration/19-CARD-SETS-AND-FORMATS.md`.
  */
-const val TRANSCRIPT_VERSION: Int = 2
+const val TRANSCRIPT_VERSION: Int = 3

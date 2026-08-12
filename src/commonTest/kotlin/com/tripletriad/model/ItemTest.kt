@@ -142,10 +142,15 @@ class ItemTest {
         assertEquals(BoonModifier(BoonType.MGP, 10), PotionType.BIG_MGP.modifier)
     }
 
-    /** `BoosterItem.as:19-27`, transcribed. Spot-checked rather than restated in full. */
+    /**
+     * `BoosterItem.as:19-27`, transcribed. Spot-checked rather than restated in full.
+     *
+     * Nine of the twelve are the AS3's. The other three are the FFVIII packs — Galbadian, Guardian
+     * Force and Character — which the FFVIII shelf never had; see [BoosterType].
+     */
     @Test
     fun boosterPoolsMatchTheAs3Constants() {
-        assertEquals(9, BoosterType.entries.size)
+        assertEquals(12, BoosterType.entries.size)
         assertEquals(listOf(4, 5, 8, 12, 27, 38).map(::ff14), BoosterType.BRONZE.pool)
         assertEquals(listOf(31, 32, 47, 51, 64, 119).map(::ff14), BoosterType.GARLEAN.pool)
         assertEquals(13, BoosterType.BEAST.pool.size)
@@ -161,7 +166,12 @@ class ItemTest {
             val booster = BoosterItem(type)
             repeat(200) { seed ->
                 val drawn = booster.open(Random(seed))
-                assertTrue(drawn in type.pool, "$type drew $drawn, not in ${type.pool}")
+                assertEquals(type.size, drawn.size, "$type should deal ${type.size} cards")
+                assertTrue(drawn.all { it in type.pool }, "$type drew $drawn, outside ${type.pool}")
+                assertTrue(
+                    drawn.last() in type.pool.drop(type.rareFrom),
+                    "$type must guarantee its last slot, drew ${drawn.last()}",
+                )
             }
         }
     }
@@ -175,7 +185,9 @@ class ItemTest {
     fun theBoosterDrawIsBiasedTowardsTheStartOfThePool() {
         val booster = BoosterItem(BoosterType.BEAST)
         val pool = BoosterType.BEAST.pool
-        val draws = (0 until 4_000).map { booster.open(Random(it)) }
+        // The ordinary slots only: the guaranteed one draws from the top of the pool by design,
+        // and including it would be measuring the guarantee rather than the bias.
+        val draws = (0 until 4_000).flatMap { booster.open(Random(it)).dropLast(1) }
 
         val firstThird = draws.count { pool.indexOf(it) < pool.size / 3 }
         assertTrue(

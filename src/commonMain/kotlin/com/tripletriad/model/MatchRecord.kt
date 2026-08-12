@@ -65,7 +65,7 @@ enum class MatchResult {
 @Serializable
 data class MatchRecord(
     val id: String,
-    val mode: CardCollection,
+    val formatId: String,
     val opponentKind: OpponentKind,
     val opponentName: String? = null,
     /** The NPC's `datas/NPCs.as` id, when [opponentKind] is [OpponentKind.NPC]. */
@@ -109,7 +109,7 @@ data class MatchRecord(
         fun of(
             id: String,
             state: MatchState,
-            mode: CardCollection,
+            formatId: String,
             opponentKind: OpponentKind,
             timestamp: Long,
             self: CardColor = CardColor.BLUE,
@@ -123,7 +123,7 @@ data class MatchRecord(
             return MatchResult.of(outcome, self)?.let { result ->
                 MatchRecord(
                     id = id,
-                    mode = mode,
+                    formatId = formatId,
                     opponentKind = opponentKind,
                     opponentName = opponentName,
                     npcId = npcId,

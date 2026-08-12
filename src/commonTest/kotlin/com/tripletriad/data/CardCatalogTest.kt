@@ -1,7 +1,6 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.Card
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.CardType
 import kotlin.test.Test
@@ -124,15 +123,6 @@ class CardCatalogTest {
     @Test
     fun ownerDefaultsToBlueBecauseTheDataDoesNotStoreIt() {
         assertTrue(catalog.all.all { it.owner == CardColor.BLUE })
-    }
-
-    /** The bridge that survives until formats land — see [CardCollection]. */
-    @Test
-    fun aShippedTableIsStillReachableByItsCollection() {
-        assertEquals(catalog.block(1), catalog.collection(CardCollection.FF14))
-        assertEquals(catalog.block(2), catalog.collection(CardCollection.FF8))
-        assertEquals(CardCollection.FF14, CardCollection.forBlock(1))
-        assertNull(CardCollection.forBlock(9))
     }
 
     /** A block nothing ships is empty rather than an error: a format may name one early. */

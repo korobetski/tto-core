@@ -1,5 +1,7 @@
 package com.tripletriad.model
 
+import com.tripletriad.data.Format
+import com.tripletriad.data.TestFormats
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,18 +29,20 @@ class RouletteTest {
      * played under the roulette, not that the roulette drew it.
      */
     private fun drawn(
-        collection: CardCollection,
+        format: Format,
         seed: Int,
         from: GameRules = GameRules(),
     ): Set<String> =
-        Roulette.augment(from, collection, Random(seed)).activeRuleKeys().toSet() -
+        Roulette.augment(from, format.rules, Random(seed))
+            .activeRuleKeys()
+            .toSet() -
             from.activeRuleKeys().toSet() - ROULETTE_KEY
 
     // ---- 33: one to three rules from the right pool -----------------------
 
     @Test
     fun betweenOneAndThreeRulesAreDrawn() {
-        val counts = seeds.map { drawn(CardCollection.FF14, it).size }
+        val counts = seeds.map { drawn(TestFormats.ff14, it).size }
 
         assertEquals(
             setOf(1, 2, 3),
@@ -54,17 +58,17 @@ class RouletteTest {
      */
     @Test
     fun drawsWithReplacementCanYieldFewerRulesThanDraws() {
-        val single = seeds.count { drawn(CardCollection.FF8, it).size == 1 }
+        val single = seeds.count { drawn(TestFormats.ff8, it).size == 1 }
 
         assertTrue(single > 0, "some seed must draw the same rule twice or collide on a slot")
     }
 
     @Test
     fun theRouletteFlagIsSetOnTheResult() {
-        for (collection in CardCollection.entries) {
+        for (format in TestFormats.catalog.formats) {
             assertTrue(
-                Roulette.augment(GameRules(), collection, Random(1)).roulette,
-                "$collection: a win under the roulette has to be countable as one",
+                Roulette.augment(GameRules(), format.rules, Random(1)).roulette,
+                "${format.id}: a win under the roulette has to be countable as one",
             )
         }
     }
@@ -73,14 +77,14 @@ class RouletteTest {
 
     @Test
     fun everyDrawnRuleBelongsToTheCollectionsPool() {
-        for (collection in CardCollection.entries) {
-            val pool = Roulette.pool(collection).toSet()
+        for (format in TestFormats.catalog.formats) {
+            val pool = format.rules.toSet()
             for (seed in seeds) {
-                val added = drawn(collection, seed)
+                val added = drawn(format, seed)
 
                 assertTrue(
                     added.all { it in pool },
-                    "$collection seed $seed drew ${added - pool}",
+                    "${format.id} seed $seed drew ${added - pool}",
                 )
             }
         }
@@ -92,8 +96,8 @@ class RouletteTest {
      */
     @Test
     fun sameWallAndElementalAreFf8Only() {
-        val ff14 = Roulette.pool(CardCollection.FF14)
-        val ff8 = Roulette.pool(CardCollection.FF8)
+        val ff14 = TestFormats.ff14.rules
+        val ff8 = TestFormats.ff8.rules
 
         assertFalse("RULE_SAME_WALL" in ff14)
         assertFalse("RULE_ELEMENTAL" in ff14)
@@ -103,7 +107,7 @@ class RouletteTest {
 
     @Test
     fun theSevenTypeAndOrderRulesAreFf14Only() {
-        val ff8 = Roulette.pool(CardCollection.FF8)
+        val ff8 = TestFormats.ff8.rules
 
         for (key in listOf(
             "RULE_ASCENSION",
@@ -115,21 +119,21 @@ class RouletteTest {
             "RULE_SWAP",
         )) {
             assertFalse(key in ff8, "$key must not be drawable in ff8_")
-            assertTrue(key in Roulette.pool(CardCollection.FF14), key)
+            assertTrue(key in TestFormats.ff14.rules, key)
         }
     }
 
     @Test
     fun bothPoolsAreExactlyTheAs3Arrays() {
-        assertEquals(13, Roulette.pool(CardCollection.FF14).size, "tripleTriadRules.as:56")
-        assertEquals(8, Roulette.pool(CardCollection.FF8).size, "tripleTriadRules.as:58")
+        assertEquals(13, TestFormats.ff14.rules.size, "tripleTriadRules.as:56")
+        assertEquals(8, TestFormats.ff8.rules.size, "tripleTriadRules.as:58")
     }
 
     /** Six rules are shared, and they are the ones neither collection reserves. */
     @Test
     fun sixRulesAreCommonToBothPools() {
-        val common = Roulette.pool(CardCollection.FF14)
-            .intersect(Roulette.pool(CardCollection.FF8).toSet())
+        val common = TestFormats.ff14.rules
+            .intersect(TestFormats.ff8.rules.toSet())
 
         assertEquals(
             setOf(
@@ -146,8 +150,8 @@ class RouletteTest {
 
     @Test
     fun everyPooledRuleIsOneTheRuleTableKnows() {
-        for (collection in CardCollection.entries) {
-            for (key in Roulette.pool(collection)) {
+        for (format in TestFormats.catalog.formats) {
+            for (key in format.rules) {
                 assertTrue(key in RuleKeys.all, "$key is not a rule GameRules can apply")
             }
         }
@@ -185,7 +189,7 @@ class RouletteTest {
         val declared = GameRules(same = true, suddenDeath = true, order = OrderRule.ORDER)
 
         for (seed in seeds) {
-            val result = Roulette.augment(declared, CardCollection.FF14, Random(seed))
+            val result = Roulette.augment(declared, TestFormats.ff14.rules, Random(seed))
 
             assertTrue(result.same, "seed $seed dropped Same")
             assertTrue(result.suddenDeath, "seed $seed dropped Sudden Death")
@@ -199,8 +203,8 @@ class RouletteTest {
     @Test
     fun aDrawIsReproducibleForAGivenSeed() {
         assertEquals(
-            Roulette.augment(GameRules(), CardCollection.FF14, Random(9)),
-            Roulette.augment(GameRules(), CardCollection.FF14, Random(9)),
+            Roulette.augment(GameRules(), TestFormats.ff14.rules, Random(9)),
+            Roulette.augment(GameRules(), TestFormats.ff14.rules, Random(9)),
         )
     }
 

@@ -1,5 +1,6 @@
 package com.tripletriad.model
 
+import com.tripletriad.data.TestFormats
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -472,7 +473,7 @@ class MatchAiTest {
 
         for (seed in seeds) {
             val random = Random(seed)
-            val rules = Roulette.augment(GameRules(), CardCollection.FF14, random)
+            val rules = Roulette.augment(GameRules(), TestFormats.ff14.rules, random)
             var current = MatchPreparation.prepare(
                 blue = HandSource(pool.shuffled(random).take(HAND_SIZE), pool),
                 redHand = pool.shuffled(random).take(HAND_SIZE),

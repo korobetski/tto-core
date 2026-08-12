@@ -1,6 +1,5 @@
 package com.tripletriad.data
 
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.MatchResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,7 +23,7 @@ class CampaignCatalogTest {
     fun aLadderParsesWithItsRungsInOrder() {
         val campaign = assertNotNull(catalog.byKey("test"))
 
-        assertEquals(CardCollection.FF14, campaign.collection)
+        assertEquals("ff14-standard", campaign.format)
         assertEquals(500, campaign.fee)
         assertEquals(listOf("first", "second"), campaign.opponents.map { it.iconId })
     }
@@ -79,8 +78,8 @@ class CampaignCatalogTest {
     /** Only the ladders of the character's own collection, as `PVEScreen` gates them. */
     @Test
     fun laddersAreSelectedByCollection() {
-        assertEquals(listOf("test"), catalog.forCollection(CardCollection.FF14).map { it.key })
-        assertEquals(emptyList(), catalog.forCollection(CardCollection.FF8).map { it.key })
+        assertEquals(listOf("test"), catalog.playing("ff14-standard").map { it.key })
+        assertEquals(emptyList(), catalog.playing("ff8-standard").map { it.key })
         assertNull(catalog.byKey("absent"))
     }
 
@@ -89,7 +88,7 @@ class CampaignCatalogTest {
             {"campaigns": [{
               "key": "test",
               "nameKey": "STR_TEST_LADDER",
-              "collection": "ff14_",
+              "format": "ff14-standard",
               "fee": 500,
               "steps": [
                 {

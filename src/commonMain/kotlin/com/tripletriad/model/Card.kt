@@ -75,54 +75,6 @@ enum class CardType {
 }
 
 /**
- * Which of the two shipped card tables a card belongs to, and which a profile plays with.
- *
- * ### What is left of it, now that ids are global
- *
- * Its original job is gone. It existed because the AS3 bolted two independently numbered tables
- * together — FFXIV 1..153, FFVIII 1..110 — so every FFVIII id also named an FFXIV card, and
- * `Save.DATAS.MODE` said which table `CARDS` indexed. Card ids are now
- * `(block shl 8) or number` and unique across every set, so nothing has to be disambiguated.
- *
- * What remains is the four things that are still genuinely per-table — the opponents, the shop
- * shelf, the rule pool and the campaign — and those become a **format** in
- * `docs/migration/19-CARD-SETS-AND-FORMATS.md`, which is the next change and not this one. This
- * enum is the placeholder in between: it is keyed by [block] rather than by a texture prefix, so it
- * is already a set reference rather than an index, and the day formats land it is deleted rather
- * than rewritten.
- *
- * @property storageKey what this collection is **written as**, trailing underscore included: the
- *   save's `MODE`, the server's `matches.collection` column, and the canonical transcript digest.
- *   It used to be called `prefix`, because it was also the texture-name prefix and the key the two
- *   card tables were looked up by; ids are global now, so the only job left is being the string
- *   already on disk. Renamed rather than deleted for exactly that reason — changing the value would
- *   need a migration and would mislabel every stored match, and this column becomes `format_id` in
- *   `docs/migration/19-CARD-SETS-AND-FORMATS.md` anyway.
- * @property slug what a path, a URL and a human use. The same string a [CardSet] carries.
- */
-@Serializable
-enum class CardCollection(val block: Int, val slug: String, val storageKey: String) {
-    @SerialName("ff14_")
-    FF14(1, "ff14", "ff14_"),
-
-    @SerialName("ff8_")
-    FF8(2, "ff8", "ff8_"),
-    ;
-
-    companion object {
-        /** The collection holding [block], or null if no shipped table does. */
-        fun forBlock(block: Int): CardCollection? = entries.firstOrNull { it.block == block }
-
-        /** The collection named `"ff14"`, or null. */
-        fun forSlug(slug: String): CardCollection? = entries.firstOrNull { it.slug == slug }
-
-        /** The collection a stored `"ff14_"` names, or null. See [storageKey]. */
-        fun forStorageKey(key: String): CardCollection? =
-            entries.firstOrNull { it.storageKey == key }
-    }
-}
-
-/**
  * A Triple Triad card.
  *
  * Field-for-field the AS3 record in `sources/src/tto/datas/cards.as`, which stores
@@ -136,9 +88,10 @@ enum class CardCollection(val block: Int, val slug: String, val storageKey: Stri
  * at a glance (`0x013e` is card 62 of block 1) and both halves come back out with a shift and a
  * mask rather than a lookup.
  *
- * It replaces the AS3 array index, which was unique only *within* a table and is why
- * [CardCollection] had to exist at all. Three properties follow, and each is the reason to prefer
- * this to a plain sequence:
+ * It replaces the AS3 array index, which was unique only *within* a table and is why a
+ * `CardCollection` enum had to exist at all — it named which of the two tables an index belonged
+ * to, and it is deleted. Three properties follow, and each is the reason to prefer this to a plain
+ * sequence:
  *
  * - **No real id is below 256**, so the whole range 1..255 is poison and every legacy id is
  *   *detectably* invalid rather than silently remapped onto the first set.
@@ -175,6 +128,21 @@ data class Card(
 
     /** Its number within that set, 1..255 — the low byte of [id]. */
     val number: Int get() = id and NUMBER_MASK
+
+    /**
+     * The four edges added up, 4..40 — how strong this card is, in one number.
+     *
+     * A card's strength is not one of its edges but all four: a 1-1-1-A is an ace that loses on
+     * three sides. Nothing in the AS3 computes this — the deck-power figure the original shows is
+     * a sum of *rarities*, which is a proxy for price rather than for strength — and the reason it
+     * is here is [com.tripletriad.data.NpcRating], which needs a total order over the card table to
+     * pick a neutral yardstick.
+     *
+     * Deliberately unweighted. Which edge matters depends on where the card is played and on
+     * whether Reverse or Fallen Ace is up, so any weighting would be a claim about a board that has
+     * not been dealt yet.
+     */
+    val total: Int get() = top + right + bottom + left
 
     init {
         require(id >= FIRST_ID) {

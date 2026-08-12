@@ -100,7 +100,6 @@ class AchievementTest {
         assertEquals(BoosterType.BEAST.pool, AchievementCatalog.BEAST_CARDS)
 
         val complete = GameSave(
-            mode = CardCollection.FF14,
             cards = AchievementCatalog.BEAST_CARDS.associateWith { 1 },
         )
         assertTrue(AchievementCatalog["ac-fob"]!!.isEarnedBy(complete))
@@ -109,8 +108,19 @@ class AchievementTest {
             complete.copy(cards = AchievementCatalog.BEAST_CARDS.dropLast(1).associateWith { 1 })
         assertFalse(AchievementCatalog["ac-fob"]!!.isEarnedBy(oneShort))
 
-        val wrongMode = complete.copy(mode = CardCollection.FF8)
-        assertFalse(AchievementCatalog["ac-fob"]!!.isEarnedBy(wrongMode), "ff8 ids are other cards")
+        // The AS3 gated this on `MODE == 'ff14_'`. There is no mode, and there is no need for one:
+        // the ids are global, so the thirteen beast cards are thirteen specific cards and holding
+        // any other thirteen is not holding them.
+        // Thirteen cards of another block, which is the closest thing to "the other table" that
+        // still exists now that an id names exactly one card.
+        val elsewhere = complete.copy(
+            cards = (1..AchievementCatalog.BEAST_CARDS.size)
+                .associate { Card.idFor(block = 2, number = it) to 1 },
+        )
+        assertFalse(
+            AchievementCatalog["ac-fob"]!!.isEarnedBy(elsewhere),
+            "other ids are other cards",
+        )
     }
 
     @Test
@@ -129,7 +139,6 @@ class AchievementTest {
     fun progressForACardSetCountsWhatIsOwned() {
         val save =
             GameSave(
-                mode = CardCollection.FF14,
                 cards = AchievementCatalog.BEAST_CARDS.take(6).associateWith { 1 },
             )
 
@@ -140,13 +149,13 @@ class AchievementTest {
     }
 
     @Test
-    fun progressOnTheWrongModeIsZeroRatherThanPartial() {
-        val save = GameSave(
-            mode = CardCollection.FF8,
-            cards = AchievementCatalog.BEAST_CARDS.associateWith { 1 },
-        )
+    fun progressCountsOnlyTheCardsTheSetNames() {
+        // Was `progressOnTheWrongModeIsZeroRatherThanPartial`, which asserted the mode gate: a
+        // profile in the other collection scored 0 rather than partial credit. The gate is gone
+        // with `MODE`, so what is left to state is that unrelated cards count for nothing.
+        val unrelated = GameSave(cards = mapOf(Card.idFor(block = 2, number = 1) to 1))
 
-        assertEquals(0, AchievementCatalog["ac-fob"]!!.progressFor(save).current)
+        assertEquals(0, AchievementCatalog["ac-fob"]!!.progressFor(unrelated).current)
     }
 
     @Test

@@ -1,7 +1,6 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.Card
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.Deck
 import com.tripletriad.model.GameSave
@@ -10,7 +9,6 @@ import com.tripletriad.model.MatchIntroStep
 import com.tripletriad.model.Npc
 import com.tripletriad.model.OpenRule
 import com.tripletriad.model.OrderRule
-import com.tripletriad.model.Roulette
 import com.tripletriad.model.TypeRule
 import kotlin.random.Random
 import kotlin.test.Test
@@ -54,11 +52,11 @@ class PveMatchTest {
     private fun ff8(number: Int) = Card.idFor(block = 2, number = number)
 
     /**
-     * Ids are global, so a profile's deck has to name cards of the table it plays: an `ff8` profile
-     * holding `ff14` ids used to be unrepresentable and is now merely wrong.
+     * Ids are global, so a fixture has to say which block its cards come from: an id alone no
+     * longer implies a table the way an AS3 array index did.
      */
-    private fun numbering(mode: CardCollection): (Int) -> Int =
-        if (mode == CardCollection.FF8) ::ff8 else ::ff14
+    private fun numbering(block: Int): (Int) -> Int =
+        if (block == TestFormats.FF8_BLOCK) ::ff8 else ::ff14
 
     /** The same opponent, drawn from the other shipped table — see [numbering]. */
     private val ff8Opponent
@@ -67,23 +65,29 @@ class PveMatchTest {
             cards = listOf(20, 21, 22, 23).map(::ff8),
         )
 
+    /**
+     * A profile holding twelve cards of one block.
+     *
+     * [block] is a *fixture* parameter and not a property of the profile: it chooses which block
+     * the twelve cards come from. The format is passed to the call under test separately.
+     */
     private fun profile(
-        mode: CardCollection = CardCollection.FF14,
-        cards: Map<Int, Int> = (1..12).associate { numbering(mode)(it) to 1 },
-        decks: List<Deck> = listOf(Deck("Starter", (1..5).map(numbering(mode)))),
-    ) = GameSave.new(createdAt = 0L, mode = mode).copy(cards = cards, decks = decks)
+        block: Int = TestFormats.FF14_BLOCK,
+        cards: Map<Int, Int> = (1..12).associate { numbering(block)(it) to 1 },
+        decks: List<Deck> = listOf(Deck("Starter", (1..5).map(numbering(block)))),
+    ) = GameSave.new(createdAt = 0L).copy(cards = cards, decks = decks)
 
     private val seeds = 0 until 40
 
     @Test
     fun bothSidesGetFiveCardsFromTheProfilesCollection() {
-        val match = PveMatches.assemble(profile(), opponent, catalog, Random(1))
+        val match = PveMatches.assemble(profile(), opponent, catalog, TestFormats.ff14, Random(1))
         val hands = match.setup.state.hands
 
         assertEquals(HAND_SIZE, hands[CardColor.BLUE]?.size)
         assertEquals(HAND_SIZE, hands[CardColor.RED]?.size)
         assertTrue(
-            hands.values.flatten().all { it.block == CardCollection.FF14.block },
+            hands.values.flatten().all { it.block == TestFormats.FF14_BLOCK },
             "an ff14_ profile must only ever see ff14_ cards",
         )
     }
@@ -91,11 +95,17 @@ class PveMatchTest {
     @Test
     fun anFf8ProfileGetsFf8Cards() {
         val match =
-            PveMatches.assemble(profile(CardCollection.FF8), ff8Opponent, catalog, Random(1))
+            PveMatches.assemble(
+                profile(TestFormats.FF8_BLOCK),
+                ff8Opponent,
+                catalog,
+                TestFormats.ff8,
+                Random(1),
+            )
 
         assertTrue(
             match.setup.state.hands.values.flatten()
-                .all { it.block == CardCollection.FF8.block },
+                .all { it.block == TestFormats.FF8_BLOCK },
         )
     }
 
@@ -110,9 +120,13 @@ class PveMatchTest {
         )
         val save = profile(decks = decks)
         val random = Random(1)
-        val plan = MatchPlan(PveMatches.rulesFor(opponent, save.mode, random), decks[1].cards)
+        val plan =
+            MatchPlan(
+                PveMatches.rulesFor(opponent, TestFormats.ff14, random),
+                decks[1].cards,
+            )
 
-        val match = PveMatches.assemble(save, opponent, catalog, random, plan)
+        val match = PveMatches.assemble(save, opponent, catalog, TestFormats.ff14, random, plan)
 
         assertEquals(decks[1].cards, match.setup.state.hands[CardColor.BLUE]?.map { it.id })
     }
@@ -130,12 +144,12 @@ class PveMatchTest {
         val roulette = opponent.copy(ruleKeys = listOf("RULE_ROULETTE"))
         val save = profile()
 
-        val whole = PveMatches.assemble(save, roulette, catalog, Random(7))
+        val whole = PveMatches.assemble(save, roulette, catalog, TestFormats.ff14, Random(7))
 
         val split = Random(7).let { random ->
-            val rules = PveMatches.rulesFor(roulette, save.mode, random)
+            val rules = PveMatches.rulesFor(roulette, TestFormats.ff14, random)
             val plan = MatchPlan(rules, PveMatches.playerDeck(save))
-            PveMatches.assemble(save, roulette, catalog, random, plan)
+            PveMatches.assemble(save, roulette, catalog, TestFormats.ff14, random, plan)
         }
 
         assertEquals(whole.rules, split.rules, "the roulette must be drawn exactly once")
@@ -155,7 +169,7 @@ class PveMatchTest {
             ),
         )
 
-        val playable = PveMatches.playableDecks(save, catalog)
+        val playable = PveMatches.playableDecks(save, catalog, TestFormats.ff14)
 
         assertEquals(listOf(1), playable.map { it.index }, "the slot, not the row")
         assertEquals("Full", playable.single().value.name)
@@ -165,7 +179,7 @@ class PveMatchTest {
     fun aProfileWithNoCompleteDeckOffersNothingToChooseFrom() {
         val save = profile(decks = listOf(Deck("Partial", listOf(1, 2).map(::ff14))))
 
-        assertTrue(PveMatches.playableDecks(save, catalog).isEmpty())
+        assertTrue(PveMatches.playableDecks(save, catalog, TestFormats.ff14).isEmpty())
         // …and still has something to play, which is what the fallback is for.
         assertEquals(HAND_SIZE, PveMatches.playerDeck(save).size)
     }
@@ -176,7 +190,13 @@ class PveMatchTest {
         val chosen = (6..10).map(::ff14)
         val decks = listOf(Deck("Partial", listOf(1, 2).map(::ff14)), Deck("Full", chosen))
 
-        val match = PveMatches.assemble(profile(decks = decks), opponent, catalog, Random(1))
+        val match = PveMatches.assemble(
+            profile(decks = decks),
+            opponent,
+            catalog,
+            TestFormats.ff14,
+            Random(1),
+        )
 
         assertEquals(chosen, match.setup.state.hands[CardColor.BLUE]?.map { it.id })
     }
@@ -191,7 +211,7 @@ class PveMatchTest {
     fun aProfileWithNoCompleteDeckFallsBackToTheCardsItOwns() {
         val partial = profile(decks = listOf(Deck("Partial", listOf(1, 2).map(::ff14))))
 
-        val hand = PveMatches.assemble(partial, opponent, catalog, Random(1))
+        val hand = PveMatches.assemble(partial, opponent, catalog, TestFormats.ff14, Random(1))
             .setup.state.hands[CardColor.BLUE]
             .orEmpty()
 
@@ -202,7 +222,13 @@ class PveMatchTest {
     @Test
     fun theOpponentAlwaysPlaysItsFetishCards() {
         for (seed in seeds) {
-            val red = PveMatches.assemble(profile(), opponent, catalog, Random(seed))
+            val red = PveMatches.assemble(
+                profile(),
+                opponent,
+                catalog,
+                TestFormats.ff14,
+                Random(seed),
+            )
                 .setup.state.hands[CardColor.RED]
                 .orEmpty()
                 .map { it.id }
@@ -218,7 +244,7 @@ class PveMatchTest {
     fun theOpponentsDeclaredRulesAreInForce() {
         val strict = opponent.copy(ruleKeys = listOf("RULE_REVERSE", "RULE_ORDER"))
 
-        val match = PveMatches.assemble(profile(), strict, catalog, Random(1))
+        val match = PveMatches.assemble(profile(), strict, catalog, TestFormats.ff14, Random(1))
 
         assertTrue(match.rules.reverse)
         assertEquals(OrderRule.ORDER, match.rules.order)
@@ -227,7 +253,7 @@ class PveMatchTest {
 
     @Test
     fun anOpponentWithNoRulesPlaysTheBasicGame() {
-        val match = PveMatches.assemble(profile(), opponent, catalog, Random(1))
+        val match = PveMatches.assemble(profile(), opponent, catalog, TestFormats.ff14, Random(1))
 
         assertTrue(match.rules.activeRuleKeys().isEmpty())
     }
@@ -240,10 +266,10 @@ class PveMatchTest {
     @Test
     fun aRouletteOpponentGetsExtraRules() {
         val gambler = opponent.copy(ruleKeys = listOf("RULE_ROULETTE"))
-        val pool = Roulette.pool(CardCollection.FF14).toSet()
+        val pool = TestFormats.ff14.rules.toSet()
 
         val extras = seeds.map { seed ->
-            PveMatches.assemble(profile(), gambler, catalog, Random(seed))
+            PveMatches.assemble(profile(), gambler, catalog, TestFormats.ff14, Random(seed))
                 .rules
                 .activeRuleKeys()
                 .toSet() - "RULE_ROULETTE"
@@ -257,11 +283,17 @@ class PveMatchTest {
     @Test
     fun anFf8RouletteOpponentDrawsFromTheFf8Pool() {
         val gambler = ff8Opponent.copy(ruleKeys = listOf("RULE_ROULETTE"))
-        val pool = Roulette.pool(CardCollection.FF8).toSet()
+        val pool = TestFormats.ff8.rules.toSet()
 
         for (seed in seeds) {
             val drawn = PveMatches
-                .assemble(profile(CardCollection.FF8), gambler, catalog, Random(seed))
+                .assemble(
+                    profile(TestFormats.FF8_BLOCK),
+                    gambler,
+                    catalog,
+                    TestFormats.ff8,
+                    Random(seed),
+                )
                 .rules
                 .activeRuleKeys()
                 .toSet() - "RULE_ROULETTE"
@@ -275,7 +307,13 @@ class PveMatchTest {
         val plain = opponent.copy(ruleKeys = listOf("RULE_SAME"))
 
         for (seed in seeds) {
-            val keys = PveMatches.assemble(profile(), plain, catalog, Random(seed))
+            val keys = PveMatches.assemble(
+                profile(),
+                plain,
+                catalog,
+                TestFormats.ff14,
+                Random(seed),
+            )
                 .rules
                 .activeRuleKeys()
 
@@ -289,7 +327,13 @@ class PveMatchTest {
     fun anElementalOpponentGetsAnElementalBoard() {
         val elemental = ff8Opponent.copy(ruleKeys = listOf("RULE_ELEMENTAL"))
 
-        val match = PveMatches.assemble(profile(CardCollection.FF8), elemental, catalog, Random(1))
+        val match = PveMatches.assemble(
+            profile(TestFormats.FF8_BLOCK),
+            elemental,
+            catalog,
+            TestFormats.ff8,
+            Random(1),
+        )
 
         assertEquals(TypeRule.ELEMENTAL, match.rules.typeRule)
         assertTrue(match.setup.state.board.elements.any { it != null })
@@ -299,7 +343,7 @@ class PveMatchTest {
     fun anAllOpenOpponentRevealsItsWholeHand() {
         val open = opponent.copy(ruleKeys = listOf("RULE_ALL_OPEN"))
 
-        val match = PveMatches.assemble(profile(), open, catalog, Random(1))
+        val match = PveMatches.assemble(profile(), open, catalog, TestFormats.ff14, Random(1))
         val red = match.setup.state.hands[CardColor.RED].orEmpty()
 
         assertEquals(OpenRule.ALL_OPEN, match.rules.open)
@@ -308,7 +352,7 @@ class PveMatchTest {
 
     @Test
     fun aDefaultOpponentRevealsNothing() {
-        val match = PveMatches.assemble(profile(), opponent, catalog, Random(1))
+        val match = PveMatches.assemble(profile(), opponent, catalog, TestFormats.ff14, Random(1))
 
         assertTrue(match.setup.opponentVisibility.visiblePositions.isEmpty())
     }
@@ -322,7 +366,7 @@ class PveMatchTest {
         val outsideTheDeck = (6..12).map(::ff14).toSet()
 
         val dealtOutside = seeds.count { seed ->
-            PveMatches.assemble(owner, chaotic, catalog, Random(seed))
+            PveMatches.assemble(owner, chaotic, catalog, TestFormats.ff14, Random(seed))
                 .setup.state.hands[CardColor.BLUE]
                 .orEmpty()
                 .any { it.id in outsideTheDeck }
@@ -335,7 +379,13 @@ class PveMatchTest {
     fun theIntroAnnouncesWhatTheOpponentImposes() {
         val showy = opponent.copy(ruleKeys = listOf("RULE_ALL_OPEN", "RULE_REVERSE"))
 
-        val intro = PveMatches.assemble(profile(), showy, catalog, Random(1)).setup.intro
+        val intro = PveMatches.assemble(
+            profile(),
+            showy,
+            catalog,
+            TestFormats.ff14,
+            Random(1),
+        ).setup.intro
 
         assertEquals(
             listOf(
@@ -350,7 +400,7 @@ class PveMatchTest {
 
     @Test
     fun aMatchStartsAtPlacementZeroWithACoinFlip() {
-        val match = PveMatches.assemble(profile(), opponent, catalog, Random(1))
+        val match = PveMatches.assemble(profile(), opponent, catalog, TestFormats.ff14, Random(1))
 
         assertEquals(0, match.setup.state.placement)
         assertEquals(match.setup.coinFlip?.winner, match.setup.state.currentPlayer)
@@ -359,7 +409,13 @@ class PveMatchTest {
     @Test
     fun bothSidesCanWinTheFlipAcrossSeeds() {
         val first = seeds.map {
-            PveMatches.assemble(profile(), opponent, catalog, Random(it)).setup.state.currentPlayer
+            PveMatches.assemble(
+                profile(),
+                opponent,
+                catalog,
+                TestFormats.ff14,
+                Random(it),
+            ).setup.state.currentPlayer
         }
 
         assertEquals(setOf(CardColor.BLUE, CardColor.RED), first.toSet())
@@ -368,8 +424,8 @@ class PveMatchTest {
     @Test
     fun aMatchIsReproducibleForAGivenSeed() {
         assertEquals(
-            PveMatches.assemble(profile(), opponent, catalog, Random(3)),
-            PveMatches.assemble(profile(), opponent, catalog, Random(3)),
+            PveMatches.assemble(profile(), opponent, catalog, TestFormats.ff14, Random(3)),
+            PveMatches.assemble(profile(), opponent, catalog, TestFormats.ff14, Random(3)),
         )
     }
 
@@ -393,22 +449,23 @@ class PveMatchTest {
         )
 
         val failure = assertFailsWith<IllegalArgumentException> {
-            PveMatches.assemble(profile(), broken, catalog, Random(1))
+            PveMatches.assemble(profile(), broken, catalog, TestFormats.ff14, Random(1))
         }
         assertTrue("test-npc" in failure.message.orEmpty(), failure.message.orEmpty())
     }
 
     @Test
-    fun aProfileWhoseCardsAreNotInItsCollectionIsAProgrammingError() {
-        // ff8_ has 30 cards, so these ids exist in ff14_ only.
+    fun aProfileWhoseCardsTheFormatDoesNotAdmitIsAProgrammingError() {
+        // Was "not in its collection". A profile has no collection now, so the mismatch this
+        // guards is between the cards held and the cards the **format** admits — which is the
+        // same failure, stated where the rule actually lives.
         val impossible = profile(
-            mode = CardCollection.FF8,
             cards = (31..35).associate { ff14(it) to 1 },
             decks = emptyList(),
         )
 
         assertFailsWith<IllegalArgumentException> {
-            PveMatches.assemble(impossible, opponent, catalog, Random(1))
+            PveMatches.assemble(impossible, ff8Opponent, catalog, TestFormats.ff8, Random(1))
         }
     }
 
@@ -425,7 +482,7 @@ class PveMatchTest {
             decks = emptyList(),
         )
 
-        val hand = PveMatches.assemble(hoarder, chaotic, catalog, Random(1))
+        val hand = PveMatches.assemble(hoarder, chaotic, catalog, TestFormats.ff14, Random(1))
             .setup.state.hands.getValue(CardColor.BLUE)
 
         assertEquals(HAND_SIZE, hand.size)

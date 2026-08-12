@@ -4,8 +4,8 @@ import com.tripletriad.data.CardCatalog
 import com.tripletriad.data.NpcCatalog
 import com.tripletriad.data.PveMatches
 import com.tripletriad.data.TEST_SETS
+import com.tripletriad.data.TestFormats
 import com.tripletriad.model.Card
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.Deck
 import com.tripletriad.model.GameSave
@@ -42,7 +42,7 @@ class TranscriptVerifierTest {
     fun anHonestMatchIsAcceptedAndScoredByTheServer() {
         val transcript = playHonestly(SEED)
 
-        val verdict = TranscriptVerifier.verify(transcript, cards, npcs)
+        val verdict = TranscriptVerifier.verify(transcript, cards, npcs, TestFormats.catalog)
 
         val accepted = assertIs<MatchVerdict.Accepted>(verdict, "rejected: $verdict")
         assertEquals(
@@ -61,8 +61,8 @@ class TranscriptVerifierTest {
         val transcript = playHonestly(SEED)
 
         assertEquals(
-            TranscriptVerifier.verify(transcript, cards, npcs),
-            TranscriptVerifier.verify(transcript, cards, npcs),
+            TranscriptVerifier.verify(transcript, cards, npcs, TestFormats.catalog),
+            TranscriptVerifier.verify(transcript, cards, npcs, TestFormats.catalog),
         )
     }
 
@@ -79,8 +79,8 @@ class TranscriptVerifierTest {
         val relabelled = honest.copy(seed = SEED + 1)
 
         assertNotEquals(
-            TranscriptVerifier.verify(honest, cards, npcs),
-            TranscriptVerifier.verify(relabelled, cards, npcs),
+            TranscriptVerifier.verify(honest, cards, npcs, TestFormats.catalog),
+            TranscriptVerifier.verify(relabelled, cards, npcs, TestFormats.catalog),
             "the deal is different, so the same nine placements cannot reach the same result",
         )
     }
@@ -177,14 +177,19 @@ class TranscriptVerifierTest {
 
         assertEquals(honest, restored)
         assertEquals(
-            TranscriptVerifier.verify(honest, cards, npcs),
-            TranscriptVerifier.verify(restored, cards, npcs),
+            TranscriptVerifier.verify(honest, cards, npcs, TestFormats.catalog),
+            TranscriptVerifier.verify(restored, cards, npcs, TestFormats.catalog),
         )
     }
 
     @Test
     fun aVerdictSurvivesJson() {
-        val verdict = TranscriptVerifier.verify(playHonestly(SEED), cards, npcs)
+        val verdict = TranscriptVerifier.verify(
+            playHonestly(SEED),
+            cards,
+            npcs,
+            TestFormats.catalog,
+        )
 
         assertEquals(verdict, json.decodeFromString<MatchVerdict>(json.encodeToString(verdict)))
     }
@@ -210,7 +215,7 @@ class TranscriptVerifierTest {
     // ---- Fixtures ---------------------------------------------------------
 
     private fun assertRejected(expected: RejectionReason, transcript: MatchTranscript) {
-        val verdict = TranscriptVerifier.verify(transcript, cards, npcs)
+        val verdict = TranscriptVerifier.verify(transcript, cards, npcs, TestFormats.catalog)
 
         val rejected = assertIs<MatchVerdict.Rejected>(verdict, "accepted: $verdict")
         assertEquals(expected, rejected.reason, rejected.detail)
@@ -233,11 +238,10 @@ class TranscriptVerifierTest {
     ): MatchTranscript {
         val random = Random(seed)
         val profile = GameSave(
-            mode = CardCollection.FF14,
             cards = owned,
             decks = listOf(Deck("test", deck)),
         )
-        val match = PveMatches.assemble(profile, opponent, cards, random)
+        val match = PveMatches.assemble(profile, opponent, cards, TestFormats.ff14, random)
 
         val ai = MatchAi()
         var state = match.setup.state
@@ -256,7 +260,7 @@ class TranscriptVerifierTest {
 
         return MatchTranscript(
             seed = seed,
-            collection = CardCollection.FF14,
+            formatId = TestFormats.ff14.id,
             opponentIconId = opponent.iconId,
             deck = deck,
             ownedCards = owned,
@@ -289,7 +293,9 @@ class TranscriptVerifierTest {
         cards = listOf(20, 21, 22, 23).map { Card.idFor(block = 1, number = it) },
     )
 
-    private val npcs = NpcCatalog(ff14 = listOf(opponent), ff8 = emptyList())
+    // The opponent declares the format the fixture's transcripts are played in — the verifier
+    // resolves it from the transcript's collection and looks the opponent up within it.
+    private val npcs = NpcCatalog(listOf(opponent.copy(formats = listOf(TestFormats.ff14.id))))
 
     private val json = Json
 
@@ -335,13 +341,12 @@ class TranscriptVerifierTest {
             owned = OWNED + (doubled to 2),
         )
         val profile = GameSave(
-            mode = CardCollection.FF14,
             cards = transcript.ownedCards,
             decks = listOf(Deck("test", transcript.deck)),
         )
 
         assertIs<MatchVerdict.Accepted>(
-            TranscriptVerifier.verify(transcript, cards, npcs, profile),
+            TranscriptVerifier.verify(transcript, cards, npcs, TestFormats.catalog, profile),
         )
     }
 }

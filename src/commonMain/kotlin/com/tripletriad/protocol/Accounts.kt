@@ -1,6 +1,5 @@
 package com.tripletriad.protocol
 
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.Item
 import com.tripletriad.model.MatchResult
@@ -153,7 +152,7 @@ data class VerifiedMatch(
     val id: Long,
     @SerialName("at") val playedAt: Long,
     val opponentIconId: String,
-    val collection: CardCollection,
+    val formatId: String,
     val seed: Int,
     val blue: Int,
     val red: Int,

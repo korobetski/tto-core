@@ -28,54 +28,23 @@ object Roulette {
     const val MAX_DRAWS: Int = 3
 
     /**
-     * The rules each collection may draw — `:56` and `:58`, in source order.
+     * The pools this used to hold are **gone**, and the note is worth keeping.
      *
-     * **These are the legal rule sets per collection, not just roulette candidates.** Same Wall
-     * and Elemental are FF8-only; Ascension, Descension, Reverse, Fallen Ace, Order, Chaos and
-     * Swap are FF14-only; six are common to both. The shipped opponent data agrees exactly — no
-     * `ff14` opponent declares Elemental or Same Wall, and no `ff8` one declares any of the seven
-     * — which is what makes this a rule of the game rather than an accident of two array
-     * literals. `NpcBundleTest` holds the data to it.
+     * A `Map<CardCollection, List<String>>` lived here and was the legal rule set per collection,
+     * not merely a list of roulette candidates — Same Wall and Elemental were FFVIII
+     * only, seven others FFXIV only, six common to both, and `NpcBundleTest` held the shipped
+     * opponents to it. That is a property of the **pool of cards being played with**, which is what
+     * a format is, so it moved to [com.tripletriad.data.Format.rules] and the caller hands it in.
      *
-     * Source order is preserved but no longer load-bearing: the AS3 indexes the pool with
-     * `tools.rand(length - 1)`, which halves the odds of the first and last entry (§ 15.6), so in
-     * both pools **All Open and Three Open were drawn half as often as everything else**. The
-     * uniform draw here removes that skew, which does mean generated rule sets will not match the
-     * original's distribution.
+     * One behaviour of the original did not survive and did not survive here either: the AS3
+     * indexes its pool with `tools.rand(length - 1)`, which halves the odds of the first and last
+     * entry (§ 15.6), so **All Open and Three Open were drawn half as often as everything else**.
+     * The draw below is uniform, which means generated rule sets do not match the original's
+     * distribution. Deliberate, and recorded because it looks like a bug when found later.
      */
-    val pools: Map<CardCollection, List<String>> = mapOf(
-        CardCollection.FF14 to listOf(
-            "RULE_ALL_OPEN",
-            "RULE_ASCENSION",
-            "RULE_CHAOS",
-            "RULE_DESCENSION",
-            "RULE_FALLEN_ACE",
-            "RULE_ORDER",
-            "RULE_PLUS",
-            "RULE_RANDOM",
-            "RULE_REVERSE",
-            "RULE_SAME",
-            "RULE_SUDDEN_DEATH",
-            "RULE_SWAP",
-            "RULE_THREE_OPEN",
-        ),
-        CardCollection.FF8 to listOf(
-            "RULE_ALL_OPEN",
-            "RULE_ELEMENTAL",
-            "RULE_PLUS",
-            "RULE_RANDOM",
-            "RULE_SAME",
-            "RULE_SAME_WALL",
-            "RULE_SUDDEN_DEATH",
-            "RULE_THREE_OPEN",
-        ),
-    )
-
-    /** The rules [collection] may be played with, in source order. */
-    fun pool(collection: CardCollection): List<String> = pools.getValue(collection)
 
     /**
-     * [rules] plus one to three rules drawn from [collection]'s pool.
+     * [rules] plus one to three rules drawn from [pool].
      *
      * Drawn **with replacement**, as the original is: the same rule twice yields fewer than three
      * effective additions, and two draws sharing a slot overwrite each other, so `RULE_ORDER` then
@@ -91,10 +60,10 @@ object Roulette {
      */
     fun augment(
         rules: GameRules,
-        collection: CardCollection,
+        pool: List<String>,
         random: Random = Random.Default,
     ): GameRules {
-        val pool = pool(collection)
+        require(pool.isNotEmpty()) { "a roulette needs a pool to draw from" }
         val draws = random.nextInt(MIN_DRAWS, MAX_DRAWS + 1)
         var result = rules.copy(roulette = true)
         repeat(draws) {

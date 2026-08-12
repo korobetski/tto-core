@@ -35,10 +35,17 @@ sealed interface ItemUse {
      * waste of it. See `GameSave.withCard` and § 1 of
      * `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md`.
      */
+    /**
+     * @property cardIds every card the pack held, in reveal order — the guaranteed one last. See
+     *   `BoosterItem.open`, which decides that order and explains why it is the only structure the
+     *   list has. A pack holds several cards now; it used to hold one.
+     * @property newCardIds those of [cardIds] the profile did not already own. A **set**, so a pack
+     *   holding two copies of a card the player lacked reports one new card and not two.
+     */
     data class PackOpened(
         override val save: GameSave,
-        val cardId: Int,
-        val wasNew: Boolean,
+        val cardIds: List<Int>,
+        val newCardIds: Set<Int>,
     ) : ItemUse
 
     /** A card item was used and [cardId] entered the collection. */
@@ -132,10 +139,10 @@ object Inventory {
     /**
      * Uses one [item].
      *
-     * - A **booster** is opened, the pack consumed, and a [CardItem] for the drawn card put in the
-     *   bag — *not* the card into the collection; see [ItemUse.PackOpened] for why that distinction
-     *   is the whole point of a pack. `BoosterItem.open()` draws from a fixed pool with a strong
-     *   low-index bias — see there.
+     * - A **booster** is opened, the pack consumed, and a [CardItem] for **each** drawn card put
+     *   in the bag — *not* the cards into the collection; see [ItemUse.PackOpened] for why that
+     *   distinction is the whole point of a pack. `BoosterItem.open()` draws several ids from a
+     *   fixed pool with a strong low-index bias, guaranteeing the last — see there.
      * - A **potion** raises its boon and is consumed.
      * - A **card item** adds its card to the collection and is consumed. `CardItem` is `useable` in
      *   the AS3, and this is what using it can only have meant.
@@ -153,11 +160,11 @@ object Inventory {
         val consumed = remove(save, item)
         return when (item) {
             is BoosterItem -> {
-                val cardId = item.open(random)
+                val drawn = item.open(random)
                 ItemUse.PackOpened(
-                    save = add(consumed, CardItem(cardId)),
-                    cardId = cardId,
-                    wasNew = !save.ownsCard(cardId),
+                    save = drawn.fold(consumed) { profile, id -> add(profile, CardItem(id)) },
+                    cardIds = drawn,
+                    newCardIds = drawn.filterNot(save::ownsCard).toSet(),
                 )
             }
 

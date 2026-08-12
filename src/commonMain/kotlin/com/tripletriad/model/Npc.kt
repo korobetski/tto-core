@@ -45,6 +45,16 @@ enum class NpcLevel(val modifier: Int) {
     val labelKey: String get() = "APP_NPC_LEVEL_$name"
 
     /**
+     * What this band is **written as** — the `@SerialName` above, spelled out.
+     *
+     * Needed by anything that emits `npcs.json` rather than reading it, which is how the shipped
+     * roster's bands are generated (see `NpcRating`). Derived from [name] rather than repeated, and
+     * `NpcTest` pins it against a real round trip so the derivation cannot drift from the
+     * annotation it mirrors.
+     */
+    val storageKey: String get() = "STR_NPC_LEVEL_$name"
+
+    /**
      * XP for a win, a draw and a loss.
      *
      * `NPC.set level` (`:212-219`) verbatim:
@@ -204,13 +214,29 @@ data class Availability(
  *   [GameRules]; they are kept in raw form because that is what `NPCs.as` lists and what the rules
  *   digest screen displays.
  * @property matchFee MGP charged to play. Deducted whatever the result.
- * @property difficulty 1..10, the AI strength dial. Display only in this port — no AI exists yet.
+ * @property difficulty 1..10 — how hard this opponent is, and what the list sorts on.
+ *   **Re-derived.** `NPCs.as` ships a field of the same name that is not a scale: the FFXIV table
+ *   runs 1..19 with gaps and the FFVIII table is 0 throughout. It is now measured — see
+ *   [NpcRating][com.tripletriad.data.NpcRating] — and the other three balance fields below
+ *   ([level], [matchFee], [mgpReward]) follow from it, so all four say one thing.
  */
 @Serializable
 data class Npc(
     val id: Int,
     @SerialName("name") val nameKey: String,
     @SerialName("iconID") val iconId: String,
+    /**
+     * The formats this opponent plays.
+     *
+     * Document 19's direction of declaration, and it is the load-bearing half of the decision:
+     * **opponents name formats, formats do not name opponents.** Opponents are authored one at a
+     * time and a format holding its own roster would be a second place for the same fact, written
+     * differently. "Who plays this format" is a scan over 85 rows, which is nothing.
+     *
+     * Replaces the array an opponent used to live in: `npcs.json` was `{ff14: […], ff8: […]}` and
+     * the profile's `MODE` picked one. That shape *was* `MODE`.
+     */
+    val formats: List<String> = emptyList(),
     @SerialName("rules") val ruleKeys: List<String> = emptyList(),
     @SerialName("fetishesCards") val fetishCards: List<Int> = emptyList(),
     val cards: List<Int> = emptyList(),

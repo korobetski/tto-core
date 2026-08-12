@@ -3,7 +3,6 @@ package com.tripletriad.protocol
 import com.tripletriad.model.AscensionTally
 import com.tripletriad.model.Board
 import com.tripletriad.model.Card
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.CardType
 import com.tripletriad.model.GameRules
@@ -74,7 +73,7 @@ data class PvpMatchView(
     val side: CardColor,
     val opponentName: String,
     val rules: GameRules,
-    val collection: CardCollection,
+    val formatId: String,
     val cells: List<PvpCell?>,
     val elements: List<CardType?>,
     val hand: List<Int>,
@@ -130,7 +129,7 @@ data class PvpMatchView(
             view: MatchView,
             matchId: String,
             opponentName: String,
-            collection: CardCollection,
+            formatId: String,
             status: PvpMatchStatus = PvpMatchStatus.PLAYING,
             stake: PvpStake = PvpStake.None,
             deadline: Long? = null,
@@ -140,7 +139,7 @@ data class PvpMatchView(
             side = view.side,
             opponentName = opponentName,
             rules = view.rules,
-            collection = collection,
+            formatId = formatId,
             cells = view.board.cells.map { placed ->
                 placed?.let { PvpCell(it.card.id, it.owner) }
             },

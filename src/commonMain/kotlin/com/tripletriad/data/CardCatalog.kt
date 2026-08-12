@@ -1,7 +1,6 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.Card
-import com.tripletriad.model.CardCollection
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -62,13 +61,13 @@ data class CardCatalog(
     fun block(block: Int): List<Card> = byBlock[block].orEmpty()
 
     /**
-     * The cards of one shipped table.
+     * Every card [format] admits, in block order.
      *
-     * The bridge from the enum that is on its way out — see [CardCollection]. Kept while the four
-     * per-table things it still names (opponents, shop, rule pool, campaign) have no format to
-     * belong to yet.
+     * What replaced "the cards of this profile's collection". A format may admit several blocks —
+     * free play admits all of them — so this is a flatMap rather than a lookup, and that is the
+     * whole difference: a player is no longer confined to one table.
      */
-    fun collection(collection: CardCollection): List<Card> = block(collection.block)
+    fun admittedBy(format: Format): List<Card> = format.blocks.flatMap(::block)
 
     /** The card with [id], or null. */
     operator fun get(id: Int): Card? = byId[id]

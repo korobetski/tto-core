@@ -1,7 +1,6 @@
 package com.tripletriad.protocol
 
 import com.tripletriad.model.Card
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.GameRules
 import com.tripletriad.model.HAND_SIZE
@@ -62,7 +61,7 @@ class PvpMatchTest {
         view = MatchView.of(state, side, visibility),
         matchId = "m-1",
         opponentName = "Kuplu",
-        collection = CardCollection.FF14,
+        formatId = "ff14-standard",
     )
 
     /**
@@ -130,7 +129,7 @@ class PvpMatchTest {
         val original = MatchView.of(state, CardColor.BLUE, HandVisibility(setOf(0, 1)))
 
         val rebuilt = PvpMatchView
-            .of(original, "m-1", "Kuplu", CardCollection.FF14)
+            .of(original, "m-1", "Kuplu", "ff14-standard")
             .toMatchView(catalogue)
 
         assertNotNull(rebuilt)

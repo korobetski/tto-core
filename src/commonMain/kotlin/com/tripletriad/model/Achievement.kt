@@ -78,18 +78,17 @@ sealed interface Requirement {
     /**
      * Own every card in [cardIds], on the [collection] profile only.
      *
-     * `ac-fob` (`Achievements.as:71`) is the sole instance: the thirteen beast cards, gated on
-     * `MODE == 'ff14_'`. The mode gate is part of the requirement rather than a separate concept
-     * because the ids mean different cards in the other collection — see [BoosterType].
+     * `ac-fob` (`Achievements.as:71`) is the sole instance: the thirteen beast cards.
+     *
+     * The AS3 gated it on `MODE == 'ff14_'`, and that gate is **gone**. It existed because the ids
+     * meant different cards in the other table — the collision global ids removed. An id names one
+     * card now, so owning the thirteen is owning the thirteen, whoever you are.
      */
     data class CardSetOwned(
-        val collection: CardCollection,
         val cardIds: List<Int>,
     ) : Requirement {
-        override fun progress(save: GameSave): Progress {
-            if (save.mode != collection) return Progress(0, cardIds.size)
-            return Progress(cardIds.count { save.ownsCard(it) }, cardIds.size)
-        }
+        override fun progress(save: GameSave): Progress =
+            Progress(cardIds.count { save.ownsCard(it) }, cardIds.size)
     }
 }
 
@@ -177,7 +176,7 @@ object AchievementCatalog {
             id = "ac-fob",
             labelKey = "STR_FRIEND_OF_BEASTS",
             iconId = "card_thumb_${Card.idFor(block = 1, number = 37)}",
-            requirement = Requirement.CardSetOwned(CardCollection.FF14, BEAST_CARDS),
+            requirement = Requirement.CardSetOwned(BEAST_CARDS),
         ),
     )
 

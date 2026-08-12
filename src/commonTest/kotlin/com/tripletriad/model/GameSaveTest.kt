@@ -26,12 +26,11 @@ class GameSaveTest {
         val save = GameSave.new(createdAt = 1_700_000_000_000)
 
         assertEquals("Kuplu Kopo", save.username)
-        assertEquals(CardCollection.FF14, save.mode)
         assertEquals(0, save.admin)
-        assertEquals(GameSave.defaultCollection(CardCollection.FF14), save.cards)
+        assertEquals(GameSave.defaultCollection(), save.cards)
         assertEquals(1, save.decks.size)
         assertEquals("Starter deck", save.decks.first().name)
-        assertEquals(GameSave.defaultCards(CardCollection.FF14), save.decks.first().cards)
+        assertEquals(GameSave.defaultCards(), save.decks.first().cards)
         assertEquals(Stats(), save.stats)
         assertTrue(save.bag.isEmpty())
         assertEquals(Boons(), save.boons)
@@ -54,7 +53,7 @@ class GameSaveTest {
     @Test
     fun theStarterDeckIsComplete() {
         assertTrue(GameSave.new(createdAt = 0).decks.first().isComplete)
-        assertEquals(HAND_SIZE, GameSave.defaultCards(CardCollection.FF14).size)
+        assertEquals(HAND_SIZE, GameSave.defaultCards().size)
     }
 
     @Test
@@ -62,14 +61,16 @@ class GameSaveTest {
         val encoded = json.encodeToString(GameSave.new(createdAt = 1))
 
         for (key in listOf(
-            "USERNAME", "CREATION_DATE", "LAST_SAVE", "SAVE_NUMBER", "MODE", "ADMIN", "CARDS",
+            "USERNAME", "CREATION_DATE", "LAST_SAVE", "SAVE_NUMBER", "ADMIN", "CARDS",
             "DECKS", "STATS", "BAG", "BOONS", "MGP", "XP", "LEVEL", "PVP_XP", "RANK", "AVATAR_ID",
             "STARTED_MATCHES", "ENDED_MATCHES", "PVE_MATCHES", "PVP_MATCHES", "ACHIEVEMENTS",
             "NPC_W", "RULES_W",
         )) {
             assertTrue(encoded.contains("\"$key\""), "$key is missing from $encoded")
         }
-        assertTrue(encoded.contains("\"ff14_\""), "MODE is the AS3 prefix string")
+        // `MODE` is **not** in this list, and its absence is the assertion: the character stopped
+        // belonging to a card table when formats arrived. See document 19.
+        assertFalse(encoded.contains("\"MODE\""), "MODE survived into the save: $encoded")
         assertTrue(encoded.contains("\"WINS\""), "STATS keeps its AS3 keys too")
         assertFalse(encoded.contains("FORFEITS"), "FORFEITS is derived, never stored")
     }
@@ -97,7 +98,6 @@ class GameSaveTest {
         val save = json.decodeFromString<GameSave>(legacy)
 
         assertEquals("Mao", save.username)
-        assertEquals(CardCollection.FF8, save.mode)
         assertEquals(1, save.admin)
         assertEquals(7, save.saveNumber)
         assertEquals(12, save.stats.wins)
@@ -117,8 +117,7 @@ class GameSaveTest {
         val save = json.decodeFromString<GameSave>("""{"USERNAME":"Sparse"}""")
 
         assertEquals("Sparse", save.username)
-        assertEquals(CardCollection.FF14, save.mode)
-        assertEquals(GameSave.defaultCollection(CardCollection.FF14), save.cards)
+        assertEquals(GameSave.defaultCollection(), save.cards)
         assertTrue(save.achievements.isEmpty())
     }
 
@@ -311,14 +310,6 @@ class GameSaveTest {
         assertEquals(5, boons.xp)
         assertEquals(10, boons.mgp)
         assertEquals(0, boons.luck, "no potion grants LUCK")
-    }
-
-    @Test
-    fun collectionPrefixesRoundTrip() {
-        assertEquals(CardCollection.FF14, CardCollection.forSlug("ff14"))
-        assertEquals(CardCollection.FF8, CardCollection.forSlug("ff8"))
-        assertEquals(null, CardCollection.forSlug("ff7"))
-        assertEquals(2, CardCollection.FF8.block)
     }
 
     // ---- Decks -----------------------------------------------------------

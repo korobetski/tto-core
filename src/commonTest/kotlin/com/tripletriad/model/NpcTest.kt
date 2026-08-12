@@ -1,5 +1,6 @@
 package com.tripletriad.model
 
+import kotlinx.serialization.json.Json
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -276,6 +277,25 @@ class NpcTest {
             assertFailsWith<IllegalArgumentException>("hour $hour must be refused") {
                 Availability(1, 2).isOpenAtHour(hour)
             }
+        }
+    }
+
+    /**
+     * [NpcLevel.storageKey] really is what the band serialises as.
+     *
+     * Derived from the enum's own name, while the wire form comes from an `@SerialName` — two
+     * spellings of one string, and the only thing keeping them together is this. A generator that
+     * emitted `STR_NPC_LEVEL_ADVANCED` for a band the parser reads back as something else would
+     * produce a roster nobody could load.
+     */
+    @Test
+    fun everyLevelsStorageKeyRoundTripsThroughTheParser() {
+        val json = Json
+        for (level in NpcLevel.entries) {
+            val encoded = json.encodeToString(NpcLevel.serializer(), level)
+
+            assertEquals("\"${level.storageKey}\"", encoded, level.name)
+            assertEquals(level, json.decodeFromString(NpcLevel.serializer(), encoded))
         }
     }
 }

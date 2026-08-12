@@ -207,8 +207,6 @@ data class GameSave(
     @SerialName("CREATION_DATE") val creationDate: Long = 0L,
     @SerialName("LAST_SAVE") val lastSave: Long = 0L,
     @SerialName("SAVE_NUMBER") val saveNumber: Int = 0,
-    /** `"ff14_"` or `"ff8_"` — the collection prefix, as [CardCollection]. */
-    @SerialName("MODE") val mode: CardCollection = CardCollection.FF14,
     /** `0` or `1`. An AS3 `uint` used as a flag; kept as written. */
     @SerialName("ADMIN") val admin: Int = 0,
     /**
@@ -231,10 +229,10 @@ data class GameSave(
      */
     @SerialName("CARDS")
     @Serializable(with = CardCopiesSerializer::class)
-    val cards: Map<Int, Int> = defaultCollection(CardCollection.FF14),
+    val cards: Map<Int, Int> = defaultCollection(),
     @SerialName("DECKS")
     val decks: List<Deck> =
-        listOf(Deck(DEFAULT_DECK_NAME, defaultCards(CardCollection.FF14))),
+        listOf(Deck(DEFAULT_DECK_NAME, defaultCards())),
     @SerialName("STATS") val stats: Stats = Stats(),
     /** The inventory. `Save.as:33` — a list of `Item.__toJSON()` objects. */
     @SerialName("BAG") val bag: List<Item> = emptyList(),
@@ -526,13 +524,23 @@ data class GameSave(
          */
         val DEFAULT_CARD_NUMBERS: List<Int> = listOf(1, 3, 6, 7, 10)
 
-        /** [DEFAULT_CARD_NUMBERS] as ids in [collection]'s own set. */
-        fun defaultCards(collection: CardCollection): List<Int> =
-            DEFAULT_CARD_NUMBERS.map { Card.idFor(block = collection.block, number = it) }
+        /**
+         * [DEFAULT_CARD_NUMBERS] as ids in the first block.
+         *
+         * The block is no longer a parameter because a character no longer belongs to a set —
+         * `MODE` is gone. It hardly matters what these are: every creation path opens a starter
+         * pack over the top, and `StarterPack.opened` **replaces** the card list and the decks
+         * rather than adding to them. What is left here is the bare floor a `GameSave` has before
+         * anything has been granted to it, which only a test ever sees.
+         */
+        fun defaultCards(): List<Int> =
+            DEFAULT_CARD_NUMBERS.map { Card.idFor(block = FIRST_BLOCK, number = it) }
 
         /** [defaultCards], one copy each — the shape [cards] holds. */
-        fun defaultCollection(collection: CardCollection): Map<Int, Int> =
-            defaultCards(collection).associateWith { 1 }
+        fun defaultCollection(): Map<Int, Int> = defaultCards().associateWith { 1 }
+
+        /** The block the bare defaults come from. See [defaultCards]. */
+        private const val FIRST_BLOCK = 1
 
         /**
          * A brand-new profile.
@@ -544,17 +552,15 @@ data class GameSave(
          */
         fun new(
             username: String = DEFAULT_USERNAME,
-            mode: CardCollection = CardCollection.FF14,
             createdAt: Long,
         ): GameSave = GameSave(
             username = username,
             creationDate = createdAt,
             lastSave = createdAt,
-            mode = mode,
             // Not the field defaults: those can only name one set, and this is where the set is
             // finally known. See [DEFAULT_CARD_NUMBERS].
-            cards = defaultCollection(mode),
-            decks = listOf(Deck(DEFAULT_DECK_NAME, defaultCards(mode))),
+            cards = defaultCollection(),
+            decks = listOf(Deck(DEFAULT_DECK_NAME, defaultCards())),
         )
     }
 }

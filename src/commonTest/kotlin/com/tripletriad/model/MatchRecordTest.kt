@@ -69,8 +69,8 @@ class MatchRecordTest {
 
         val record = MatchRecord.of(
             id = "m1",
+            formatId = "ff14-standard",
             state = state,
-            mode = CardCollection.FF14,
             opponentKind = OpponentKind.NPC,
             timestamp = 1_700_000_000_000,
             opponentName = "jonas",
@@ -104,8 +104,8 @@ class MatchRecordTest {
         assertNull(
             MatchRecord.of(
                 id = "m1",
+                formatId = "ff14-standard",
                 state = running,
-                mode = CardCollection.FF14,
                 opponentKind = OpponentKind.PVP,
                 timestamp = 1,
             ),
@@ -116,7 +116,7 @@ class MatchRecordTest {
     fun theScoreIsReadableFromTheProfilesSide() {
         val record = MatchRecord(
             id = "m1",
-            mode = CardCollection.FF14,
+            formatId = FORMAT,
             opponentKind = OpponentKind.PVP,
             timestamp = 1,
             result = MatchResult.LOSE,
@@ -133,7 +133,7 @@ class MatchRecordTest {
     fun aRowRoundTrips() {
         val record = MatchRecord(
             id = "m1",
-            mode = CardCollection.FF8,
+            formatId = FORMAT,
             opponentKind = OpponentKind.NPC,
             opponentName = "kid",
             npcId = 1,
@@ -155,7 +155,7 @@ class MatchRecordTest {
         assertFailsWith<IllegalArgumentException> {
             MatchRecord(
                 id = "  ",
-                mode = CardCollection.FF14,
+                formatId = FORMAT,
                 opponentKind = OpponentKind.PVP,
                 timestamp = 1,
                 result = MatchResult.DRAW,
@@ -170,7 +170,7 @@ class MatchRecordTest {
         assertFailsWith<IllegalArgumentException> {
             MatchRecord(
                 id = "m1",
-                mode = CardCollection.FF14,
+                formatId = FORMAT,
                 opponentKind = OpponentKind.PVP,
                 timestamp = 1,
                 result = MatchResult.DRAW,
@@ -180,3 +180,6 @@ class MatchRecordTest {
         }
     }
 }
+
+/** Any format id: the record stores it and nothing in this file reads it back. */
+private const val FORMAT: String = "ff14-standard"

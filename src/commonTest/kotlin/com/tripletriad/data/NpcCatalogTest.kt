@@ -1,7 +1,6 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.Availability
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.NpcLevel
 import com.tripletriad.model.PotionType
 import kotlin.test.Test
@@ -17,14 +16,18 @@ import kotlin.test.assertTrue
  * its default and an opponent would quietly lose its rules.
  */
 class NpcCatalogTest {
-    /** Copied from the extractor's output for `NPCs.as` entry 1 and entry 8. */
+    /**
+     * Copied from the extractor's output for `NPCs.as` entries 1 and 8, plus one from the other
+     * table — and each now declaring the format it plays, which is what replaced the two arrays.
+     */
     private val json = """
         {
-          "ff14": [
+          "npcs": [
             {
               "id": 1,
               "name": "STR_NPC_TT_Master",
               "iconID": "tt-master",
+              "formats": ["ff14-standard"],
               "rules": ["RULE_ALL_OPEN"],
               "fetishesCards": [2, 4, 5, 7, 13],
               "cards": [],
@@ -41,6 +44,7 @@ class NpcCatalogTest {
               "id": 8,
               "name": "STR_NPC_Trachtoum",
               "iconID": "tratchoum",
+              "formats": ["ff14-standard"],
               "rules": ["RULE_THREE_OPEN"],
               "fetishesCards": [41, 49, 39],
               "cards": [38, 22, 47, 20],
@@ -50,13 +54,12 @@ class NpcCatalogTest {
               "itemRewards": [],
               "difficulty": 5,
               "availability": { "begins": 20, "ends": 8 }
-            }
-          ],
-          "ff8": [
+            },
             {
               "id": 1,
               "name": "STR_NPC_KID",
               "iconID": "kid",
+              "formats": ["ff8-standard"],
               "rules": ["RULE_ALL_OPEN"],
               "fetishesCards": [],
               "cards": [1, 2, 3],
@@ -74,7 +77,7 @@ class NpcCatalogTest {
 
     @Test
     fun everyFieldOfTheExtractorsShapeIsRead() {
-        val master = catalog.ff14.first()
+        val master = catalog.all.first()
 
         assertEquals(1, master.id)
         assertEquals("STR_NPC_TT_Master", master.nameKey)
@@ -97,13 +100,13 @@ class NpcCatalogTest {
     /** Absent in most entries, so it must default rather than fail to parse. */
     @Test
     fun anAbsentAvailabilityDefaultsToAlways() {
-        assertEquals(Availability.Always, catalog.ff14.first().availability)
-        assertTrue(catalog.ff14.first().availability.isAlwaysAvailable)
+        assertEquals(Availability.Always, catalog.all.first().availability)
+        assertTrue(catalog.all.first().availability.isAlwaysAvailable)
     }
 
     @Test
     fun aDeclaredAvailabilityIsReadAsHours() {
-        val window = catalog.ff14[1].availability
+        val window = catalog.all[1].availability
 
         assertEquals(20, window.begins)
         assertEquals(8, window.ends)
@@ -112,23 +115,23 @@ class NpcCatalogTest {
 
     @Test
     fun collectionsAreSelectedByMode() {
-        assertEquals(2, catalog.collection(CardCollection.FF14).size)
-        assertEquals(1, catalog.collection(CardCollection.FF8).size)
+        assertEquals(2, catalog.playing(FF14).size)
+        assertEquals(1, catalog.playing(FF8).size)
         assertEquals(3, catalog.all.size)
     }
 
     /** Ids repeat across the ff8 table, so lookup is by icon. */
     @Test
     fun opponentsAreFoundByIconWithinTheirCollection() {
-        assertEquals("STR_NPC_TT_Master", catalog.byIcon("tt-master", CardCollection.FF14)?.nameKey)
-        assertNull(catalog.byIcon("tt-master", CardCollection.FF8), "collections do not leak")
-        assertNull(catalog.byIcon("no-such-npc", CardCollection.FF14))
+        assertEquals("STR_NPC_TT_Master", catalog.byIcon("tt-master", FF14)?.nameKey)
+        assertNull(catalog.byIcon("tt-master", FF8), "collections do not leak")
+        assertNull(catalog.byIcon("no-such-npc", FF14))
     }
 
     /** `NPCs.toListCollection()` sorts on difficulty, then match fee, then name. */
     @Test
     fun theAvailableListIsSortedAsTheAs3ListIs() {
-        val available = catalog.available(CardCollection.FF14, hour = 21, level = ANY_LEVEL)
+        val available = catalog.available(FF14, hour = 21, level = ANY_LEVEL)
 
         assertEquals(listOf("tt-master", "tratchoum"), available.map { it.iconId })
     }
@@ -138,12 +141,12 @@ class NpcCatalogTest {
         // Trachtoum runs 20:00-08:00, so it is absent at noon and present at 23:00.
         assertEquals(
             listOf("tt-master"),
-            catalog.available(CardCollection.FF14, hour = 12, level = ANY_LEVEL).map {
+            catalog.available(FF14, hour = 12, level = ANY_LEVEL).map {
                 it.iconId
             },
         )
         assertTrue(
-            catalog.available(CardCollection.FF14, hour = 23, level = ANY_LEVEL)
+            catalog.available(FF14, hour = 23, level = ANY_LEVEL)
                 .any { it.iconId == "tratchoum" },
         )
     }
@@ -157,7 +160,7 @@ class NpcCatalogTest {
     @Test
     fun anOpponentTooHardForTheCharactersLevelIsNotListed() {
         fun icons(level: Int) =
-            catalog.available(CardCollection.FF14, hour = 23, level = level).map { it.iconId }
+            catalog.available(FF14, hour = 23, level = level).map { it.iconId }
 
         assertEquals(listOf("tt-master"), icons(level = 1), "a new character sees the easiest")
         assertEquals(listOf("tt-master"), icons(level = 3), "and still not the difficulty-5 one")
@@ -171,28 +174,28 @@ class NpcCatalogTest {
     /** What the list says under itself. Counted over the same window test — see `lockedByLevel`. */
     @Test
     fun theOnesHeldBackAreCounted() {
-        assertEquals(1, catalog.lockedByLevel(CardCollection.FF14, hour = 23, level = 1))
-        assertEquals(0, catalog.lockedByLevel(CardCollection.FF14, hour = 23, level = 4))
+        assertEquals(1, catalog.lockedByLevel(FF14, hour = 23, level = 1))
+        assertEquals(0, catalog.lockedByLevel(FF14, hour = 23, level = 4))
         // Trachtoum is out of its window at noon, so it is not "locked" — it is simply not around.
-        assertEquals(0, catalog.lockedByLevel(CardCollection.FF14, hour = 12, level = 1))
+        assertEquals(0, catalog.lockedByLevel(FF14, hour = 12, level = 1))
     }
 
     /** `ignoreUnknownKeys`, so a field this build does not know about does not break parsing. */
     @Test
     fun anUnknownFieldIsIgnored() {
         val extended = """
-            {"ff14":[{"id":1,"name":"n","iconID":"i","futureField":42}],"ff8":[]}
+            {"npcs":[{"id":1,"name":"n","iconID":"i","formats":["f"],"futureField":42}]}
         """.trimIndent()
 
-        assertEquals(1, NpcCatalogParser.parse(extended).ff14.single().id)
+        assertEquals(1, NpcCatalogParser.parse(extended).all.single().id)
     }
 
     /** Every field but the three identifying ones has a default, so a sparse entry still loads. */
     @Test
     fun aSparseEntryLoadsWithDefaults() {
-        val sparse = """{"ff14":[{"id":9,"name":"n","iconID":"i"}],"ff8":[]}"""
+        val sparse = """{"npcs":[{"id":9,"name":"n","iconID":"i"}]}"""
 
-        val npc = NpcCatalogParser.parse(sparse).ff14.single()
+        val npc = NpcCatalogParser.parse(sparse).all.single()
 
         assertEquals(NpcLevel.NONE, npc.level)
         assertEquals(0, npc.matchFee)
@@ -208,4 +211,8 @@ class NpcCatalogTest {
  * The tests that pass it are about the **hour** window or about a named opponent, and would
  * otherwise be asserting the level rule by accident. The gate has its own cases above.
  */
+/** The fixture's two formats. Ids, because that is what an opponent declares now. */
+private const val FF14: String = "ff14-standard"
+private const val FF8: String = "ff8-standard"
+
 private const val ANY_LEVEL: Int = 99

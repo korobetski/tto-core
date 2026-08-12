@@ -2,7 +2,6 @@ package com.tripletriad.data
 
 import com.tripletriad.model.BoosterItem
 import com.tripletriad.model.BoosterType
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CardItem
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.MiscItem
@@ -136,13 +135,16 @@ class InventoryTest {
         val used = Inventory.use(save, booster, Random(1))
 
         val opened = assertIs<ItemUse.PackOpened>(used)
-        assertTrue(opened.cardId in BoosterType.BRONZE.pool)
+        assertEquals(BoosterType.BRONZE.size, opened.cardIds.size, "a pack holds several cards")
+        assertTrue(opened.cardIds.all { it in BoosterType.BRONZE.pool })
         assertEquals(0, Inventory.count(opened.save, booster), "the pack is consumed")
-        assertEquals(
-            1,
-            Inventory.count(opened.save, CardItem(opened.cardId)),
-            "the drawn card should be in the bag: ${opened.save.bag}",
-        )
+        for ((id, copies) in opened.cardIds.groupingBy { it }.eachCount()) {
+            assertEquals(
+                copies,
+                Inventory.count(opened.save, CardItem(id)),
+                "every drawn card should be in the bag: ${opened.save.bag}",
+            )
+        }
         assertEquals(
             empty.cards,
             opened.save.cards,
@@ -158,12 +160,11 @@ class InventoryTest {
             Inventory.use(Inventory.add(empty, booster), booster, Random(7)),
         )
 
-        val used = assertIs<ItemUse.CardDrawn>(
-            Inventory.use(opened.save, CardItem(opened.cardId)),
-        )
+        val used = opened.cardIds.distinct().fold(opened.save) { profile, id ->
+            assertIs<ItemUse.CardDrawn>(Inventory.use(profile, CardItem(id))).save
+        }
 
-        assertTrue(used.save.ownsCard(opened.cardId))
-        assertTrue(used.save.bag.isEmpty(), "both the pack and the card item are gone")
+        assertTrue(opened.cardIds.distinct().all(used::ownsCard))
     }
 
     /** A pack opened into a bag that already holds that card stacks rather than adding a row. */
@@ -177,12 +178,14 @@ class InventoryTest {
             Inventory.use(first.save, BoosterItem(BoosterType.BRONZE), Random(2)),
         )
 
-        assertEquals(first.cardId, again.cardId, "the same seed draws the same card")
-        assertEquals(2, Inventory.count(again.save, CardItem(again.cardId)))
+        assertEquals(first.cardIds, again.cardIds, "the same seed draws the same cards")
+        for ((id, copies) in (first.cardIds + again.cardIds).groupingBy { it }.eachCount()) {
+            assertEquals(copies, Inventory.count(again.save, CardItem(id)))
+        }
         assertEquals(
-            1,
+            again.cardIds.distinct().size,
             again.save.bag.size,
-            "one row, stack of two — not two rows: ${again.save.bag}",
+            "one row per distinct card, stacked — not a row per copy: ${again.save.bag}",
         )
     }
 
@@ -214,13 +217,13 @@ class InventoryTest {
     /** A duplicate is still consumed; the flag is how the UI knows to say "already owned". */
     @Test
     fun aDuplicateCardIsStillConsumedAndReportedAsNotNew() {
-        val item = CardItem(GameSave.defaultCards(CardCollection.FF14).first())
+        val item = CardItem(GameSave.defaultCards().first())
         val save = Inventory.add(empty, item)
 
         val drawn = assertIs<ItemUse.CardDrawn>(Inventory.use(save, item))
 
         assertTrue(
-            GameSave.defaultCards(CardCollection.FF14).first() in empty.cards,
+            GameSave.defaultCards().first() in empty.cards,
             "the card is in the starter collection",
         )
         assertEquals(false, drawn.wasNew)

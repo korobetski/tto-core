@@ -1,6 +1,5 @@
 package com.tripletriad.data
 
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.MatchResult
 import com.tripletriad.model.Npc
 import kotlinx.serialization.SerialName
@@ -71,7 +70,9 @@ data class CampaignStep(
  *
  * @property key `cc` or `gs`, the ladder's stable identity.
  * @property nameKey `STR_CCGROUP` / `STR_GSGROUP`, the title of its entry screen.
- * @property collection which card collection it belongs to. `PVEScreen.as:84,91` shows the Card
+ * @property format the format its rungs are played under, by [Format.id]. Was `collection` — a
+ *   ladder *is* a format plus a list of opponents, which is document 19's own phrasing, so naming
+ *   the format is saying what it always meant. `PVEScreen.as:84,91` shows the Card
  *   Club only to an `ff8_` character and the Gold Saucer only to an `ff14_` one, so no profile can
  *   see both.
  * @property fee what entering costs, once, for the whole ladder — 500 MGP for both.
@@ -80,7 +81,7 @@ data class CampaignStep(
 data class Campaign(
     val key: String,
     val nameKey: String,
-    val collection: CardCollection,
+    val format: String,
     val fee: Int,
     val steps: List<CampaignStep>,
 ) {
@@ -132,9 +133,8 @@ data class Campaign(
 data class CampaignCatalog(
     @SerialName("campaigns") val all: List<Campaign>,
 ) {
-    /** The ladders an [collection] character can enter — one each, in the shipped data. */
-    fun forCollection(collection: CardCollection): List<Campaign> =
-        all.filter { it.collection == collection }
+    /** The ladders playable in [formatId] — one each, in the shipped data. */
+    fun playing(formatId: String): List<Campaign> = all.filter { it.format == formatId }
 
     /** One ladder by [Campaign.key], or null. */
     fun byKey(key: String): Campaign? = all.firstOrNull { it.key == key }

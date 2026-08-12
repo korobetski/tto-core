@@ -2,7 +2,7 @@ package com.tripletriad.data
 
 import com.tripletriad.model.BoosterItem
 import com.tripletriad.model.BoosterType
-import com.tripletriad.model.CardCollection
+import com.tripletriad.model.Card
 import com.tripletriad.model.CardItem
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.Item
@@ -59,14 +59,6 @@ object ShopCatalog {
     val ff14: List<ShopOffer> = listOf(
         ShopOffer(PotionItem(PotionType.MGP), price = 50),
         ShopOffer(PotionItem(PotionType.XP), price = 50),
-        ShopOffer(BoosterItem(BoosterType.BRONZE), price = 520),
-        ShopOffer(BoosterItem(BoosterType.SILVER), price = 1_152),
-        ShopOffer(BoosterItem(BoosterType.GOLD), price = 2_160),
-        ShopOffer(BoosterItem(BoosterType.MITHRIL), price = 8_000),
-        ShopOffer(BoosterItem(BoosterType.BEAST), price = 360),
-        ShopOffer(BoosterItem(BoosterType.SCION), price = 1_152),
-        ShopOffer(BoosterItem(BoosterType.PRIMAL), price = 3_280),
-        ShopOffer(BoosterItem(BoosterType.GARLEAN), price = 2_160),
         ShopOffer(CardItem(258), price = 120),
         ShopOffer(CardItem(269), price = 150),
         ShopOffer(CardItem(276), price = 200),
@@ -89,15 +81,52 @@ object ShopCatalog {
     )
 
     /**
-     * What is on sale to a [collection] profile.
+     * Every pack, at a price [BoosterPricing] works out from what it holds.
+     *
+     * Separate from the two authored lists above, and priceless — literally: a [ShopOffer] needs a
+     * number and the number is not knowable without the card table, so [boosterOffers] takes one
+     * and the shelf is assembled per call. That is the cost of pricing a pack by its contents, and
+     * it is worth paying: the eight AS3 prices bore no relation to the pools (Beast and Bronze at
+     * 360 and 520 for comparable pools; Scion and Silver both at 1 152 three stars apart), and any
+     * hand-typed replacement would drift the first time a pool changed.
+     *
+     * The three FFVIII packs are new — see [BoosterType]. The FFVIII shelf sold no packs at all,
+     * which was correct while every pool named ids that resolved against whichever table `MODE`
+     * selected, and is simply a gap now that ids are global.
+     */
+    fun boosterOffers(cards: Map<Int, Card>): List<ShopOffer> =
+        BoosterType.entries.map { type ->
+            ShopOffer(BoosterItem(type), price = BoosterPricing.priceOf(type, cards))
+        }
+
+    /**
+     * Everything the shop sells, both shelves at once and each potion only once.
+     *
+     * The two lists above are the AS3's, kept as written so they stay diffable against
+     * `shopScreen.as`. This is what a caller reads, and [offers] is how it is filtered.
+     */
+    val shelf: List<ShopOffer> = (ff14 + ff8).distinct()
+
+    /** [shelf] with the priced packs on it, in shelf order: potions, packs, then single cards. */
+    fun shelf(cards: Map<Int, Card>): List<ShopOffer> {
+        val (potions, singles) = shelf.partition { it.item is PotionItem }
+        return potions + boosterOffers(cards) + singles
+    }
+
+    /**
+     * What is on sale in [format].
      *
      * `shopScreen[MODE.toUpperCase() + 'SHOP']` (`:100`) — a string-built static lookup in the
-     * original, which is why a typo in `MODE` produced an empty list rather than an error.
+     * original, which is why a typo in `MODE` produced an empty list rather than an error. It is a
+     * **filter** now rather than a lookup: an offer belongs to the block of the cards it yields,
+     * and the format decides which blocks are in play.
+     *
+     * A potion belongs to no block and is always on the shelf. That is not a special case bolted
+     * on: an XP boon does not come from a set, and a shop that hid it in half the formats would be
+     * hiding it for no reason anyone could state.
      */
-    fun offers(collection: CardCollection): List<ShopOffer> = when (collection) {
-        CardCollection.FF14 -> ff14
-        CardCollection.FF8 -> ff8
-    }
+    fun offers(format: Format, cards: Map<Int, Card>): List<ShopOffer> =
+        shelf(cards).filter { offer -> offer.block?.let(format::admits) ?: true }
 
     /**
      * Buys [offer] for [save], or returns the profile unchanged when it cannot be paid for.
@@ -112,3 +141,21 @@ object ShopCatalog {
         return Inventory.add(save.withMgp(-offer.price), offer.item)
     }
 }
+
+/**
+ * The block an offer's cards come from, or null when it sells nothing set-specific.
+ *
+ * Derived rather than authored, because it is already written down twice over: a card id encodes
+ * its block, and a booster's pool is a list of card ids. A third statement of the same fact would
+ * be the one that goes stale.
+ *
+ * A booster whose pool somehow spanned two blocks would answer with the first, which no shipped
+ * booster does — `ShopCatalogTest` holds them to it, so the day one does the test says so rather
+ * than the shop quietly hiding it.
+ */
+val ShopOffer.block: Int?
+    get() = when (val bought = item) {
+        is CardItem -> bought.cardId shr Card.BLOCK_SHIFT
+        is BoosterItem -> bought.boosterType.pool.firstOrNull()?.shr(Card.BLOCK_SHIFT)
+        else -> null
+    }

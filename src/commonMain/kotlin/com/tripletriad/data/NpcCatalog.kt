@@ -1,39 +1,43 @@
 package com.tripletriad.data
 
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.Npc
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The two NPC tables of `sources/src/tto/datas/NPCs.as`, as extracted by
- * `tools/extract_npcs.py`.
+ * Every opponent, as extracted from `sources/src/tto/datas/NPCs.as` by `tools/extract_npcs.py`.
  *
- * Selected by the profile's mode exactly as the AS3 does — `NPCs.LIST` returns
- * `NPCs[MODE.toUpperCase() + 'NPCS']` — so a profile sees one table's opponents and never the
- * other's.
+ * ### One list, not two
+ *
+ * This was `{ff14: […], ff8: […]}`, and the profile's `MODE` picked an array — `NPCs.LIST` returns
+ * `NPCs[MODE.toUpperCase() + 'NPCS']`, so a profile saw one table and never the other. **That shape
+ * was `MODE`**, in the data rather than in code, and it is the reason the character had to carry a
+ * collection at all.
+ *
+ * Now there is one roster and each opponent declares the formats it plays ([Npc.formats]). Which
+ * opponents a player meets is a property of the *match they are looking for*, which is what a
+ * format is. See `docs/migration/19-CARD-SETS-AND-FORMATS.md`.
  */
 @Serializable
 data class NpcCatalog(
-    val ff14: List<Npc>,
-    val ff8: List<Npc>,
+    val npcs: List<Npc>,
 ) {
-    /** All opponents of both collections, ff14 first, in AS3 array order. */
-    val all: List<Npc> get() = ff14 + ff8
+    /** Every opponent, in authored order — ff14's first, as the two arrays used to be. */
+    val all: List<Npc> get() = npcs
 
-    fun collection(collection: CardCollection): List<Npc> = when (collection) {
-        CardCollection.FF14 -> ff14
-        CardCollection.FF8 -> ff8
-    }
+    /** The opponents that play [formatId]. */
+    fun playing(formatId: String): List<Npc> = npcs.filter { formatId in it.formats }
 
     /**
-     * One opponent by its `iconID`, searched within [collection].
+     * One opponent by its `iconID`, within [formatId].
      *
-     * Keyed by icon rather than by `id` because ids are **not unique** — the ff8 table repeats 2
-     * and 13 — and because `NPC_W` records wins under the icon id anyway. See [Npc.id].
+     * Keyed by icon rather than by `id` because ids are **not unique** — what used to be the ff8
+     * table repeats 2 and 13 — and because `NPC_W` records wins under the icon id anyway. The
+     * format is still part of the question for the same reason it always was: two opponents in
+     * different formats may share neither ids nor nothing else.
      */
-    fun byIcon(iconId: String, collection: CardCollection): Npc? =
-        collection(collection).firstOrNull { it.iconId == iconId }
+    fun byIcon(iconId: String, formatId: String): Npc? =
+        playing(formatId).firstOrNull { it.iconId == iconId }
 
     /**
      * The opponents challengeable at [hour] by a character of [level], in list order.
@@ -62,8 +66,8 @@ data class NpcCatalog(
      *   testable, which is the same reason nothing else in this module reads one.
      * @param level the character's level. See [com.tripletriad.model.GameSave.level].
      */
-    fun available(collection: CardCollection, hour: Int, level: Int): List<Npc> =
-        collection(collection)
+    fun available(formatId: String, hour: Int, level: Int): List<Npc> =
+        playing(formatId)
             .filter { it.availability.isOpenAtHour(hour) && it.isOpenAtLevel(level) }
             .sortedWith(compareBy({ it.difficulty }, { it.matchFee }, { it.nameKey.lowercase() }))
 
@@ -75,8 +79,8 @@ data class NpcCatalog(
      * simply not around at this hour is not "locked", and saying so would send the player looking
      * for a level that would not produce them.
      */
-    fun lockedByLevel(collection: CardCollection, hour: Int, level: Int): Int =
-        collection(collection)
+    fun lockedByLevel(formatId: String, hour: Int, level: Int): Int =
+        playing(formatId)
             .count { it.availability.isOpenAtHour(hour) && !it.isOpenAtLevel(level) }
 
     private fun Npc.isOpenAtLevel(level: Int): Boolean = difficulty <= level + LEVEL_REACH

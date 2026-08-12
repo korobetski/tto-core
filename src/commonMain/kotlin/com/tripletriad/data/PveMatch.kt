@@ -1,7 +1,6 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.Card
-import com.tripletriad.model.CardCollection
 import com.tripletriad.model.CoinFlip
 import com.tripletriad.model.Deck
 import com.tripletriad.model.GameRules
@@ -76,12 +75,13 @@ object PveMatches {
         profile: GameSave,
         npc: Npc,
         catalog: CardCatalog,
+        format: Format,
         random: Random = Random.Default,
-        plan: MatchPlan = MatchPlan(rulesFor(npc, profile.mode, random), playerDeck(profile)),
+        plan: MatchPlan = MatchPlan(rulesFor(npc, format, random), playerDeck(profile)),
         forcedFlip: CoinFlip? = null,
     ): PveMatch {
         val (rules, deck) = plan
-        val cards = catalog.collection(profile.mode).associateBy { it.id }
+        val cards = catalog.admittedBy(format).associateBy { it.id }
         val blueDeck = resolve(deck, cards, "profile '${profile.username}' deck")
         // One entry per *copy*, not per card: `RULE_RANDOM` draws five without replacement from
         // this list, so a profile holding three copies of one card and two others can field a hand
@@ -113,13 +113,21 @@ object PveMatches {
      * This cannot be folded into [Npc.gameRules]: an opponent's *declared* rules are a fixed
      * property of the opponent, and what a *match* is played under is not.
      *
+     * The pool comes from [format] rather than from the profile's collection, which is document
+     * 19's whole point: what may be drawn is a property of what is being played *with*, not of who
+     * is playing. `Roulette.pools` used to answer this and no longer exists.
+     *
      * @param random consumed only when [Npc] declares the roulette. [assemble] defaults to calling
      *   this, so the draw order is unchanged for a caller that does not resolve the rules itself —
      *   and a caller that does must pass what it got back, or the roulette is drawn twice.
      */
-    fun rulesFor(npc: Npc, collection: CardCollection, random: Random): GameRules {
+    fun rulesFor(npc: Npc, format: Format, random: Random): GameRules {
         val declared = npc.gameRules()
-        return if (declared.roulette) Roulette.augment(declared, collection, random) else declared
+        return if (declared.roulette) {
+            Roulette.augment(declared, format.rules, random)
+        } else {
+            declared
+        }
     }
 
     /**
@@ -140,8 +148,12 @@ object PveMatches {
      * deck is labelled by its slot number ([DeckSelectorScreen]), so filtering out the incomplete
      * ones would otherwise rename the survivors.
      */
-    fun playableDecks(profile: GameSave, catalog: CardCatalog): List<IndexedValue<Deck>> {
-        val ids = catalog.collection(profile.mode).mapTo(mutableSetOf()) { it.id }
+    fun playableDecks(
+        profile: GameSave,
+        catalog: CardCatalog,
+        format: Format,
+    ): List<IndexedValue<Deck>> {
+        val ids = catalog.admittedBy(format).mapTo(mutableSetOf()) { it.id }
         return profile.decks.withIndex().filter { (_, deck) ->
             deck.isComplete && ids.containsAll(deck.cards) && deck.isAffordable(profile.cards)
         }

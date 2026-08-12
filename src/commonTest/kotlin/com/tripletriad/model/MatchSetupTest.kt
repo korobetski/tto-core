@@ -1,5 +1,6 @@
 package com.tripletriad.model
 
+import com.tripletriad.data.TestFormats
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -368,7 +369,7 @@ class MatchSetupTest {
     @Test
     fun theStartAnnouncementIsAlwaysLast() {
         for (seed in seeds) {
-            val rules = Roulette.augment(GameRules(), CardCollection.FF14, Random(seed))
+            val rules = Roulette.augment(GameRules(), TestFormats.ff14.rules, Random(seed))
 
             assertEquals(
                 MatchIntroStep.START,

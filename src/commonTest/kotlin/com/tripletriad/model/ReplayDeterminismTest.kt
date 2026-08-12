@@ -3,6 +3,7 @@ package com.tripletriad.model
 import com.tripletriad.data.CardCatalog
 import com.tripletriad.data.PveMatches
 import com.tripletriad.data.TEST_SETS
+import com.tripletriad.data.TestFormats
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -93,8 +94,20 @@ class ReplayDeterminismTest {
     @Test
     fun theSameSeedAssemblesTheSameMatch() {
         for (seed in SEEDS) {
-            val first = PveMatches.assemble(profile(), opponent, catalog, Random(seed))
-            val second = PveMatches.assemble(profile(), opponent, catalog, Random(seed))
+            val first = PveMatches.assemble(
+                profile(),
+                opponent,
+                catalog,
+                TestFormats.ff14,
+                Random(seed),
+            )
+            val second = PveMatches.assemble(
+                profile(),
+                opponent,
+                catalog,
+                TestFormats.ff14,
+                Random(seed),
+            )
 
             assertEquals(first.rules, second.rules, "rules, seed $seed")
             assertEquals(first.setup.state.hands, second.setup.state.hands, "hands, seed $seed")
@@ -119,8 +132,8 @@ class ReplayDeterminismTest {
     fun theRouletteDrawsTheSameRules() {
         for (seed in SEEDS) {
             val declared = GameRules(roulette = true)
-            val first = Roulette.augment(declared, CardCollection.FF14, Random(seed))
-            val second = Roulette.augment(declared, CardCollection.FF14, Random(seed))
+            val first = Roulette.augment(declared, TestFormats.ff14.rules, Random(seed))
+            val second = Roulette.augment(declared, TestFormats.ff14.rules, Random(seed))
 
             assertEquals(first, second, "seed $seed")
         }
@@ -228,7 +241,7 @@ class ReplayDeterminismTest {
      */
     private fun playOut(seed: Int): String {
         val random = Random(seed)
-        val match = PveMatches.assemble(profile(), opponent, catalog, random)
+        val match = PveMatches.assemble(profile(), opponent, catalog, TestFormats.ff14, random)
         val ai = MatchAi()
         var state = match.setup.state
         val moves = mutableListOf<String>()
