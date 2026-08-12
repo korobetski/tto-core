@@ -159,11 +159,20 @@ data class Deck(
 /**
  * A whole profile — one `.sav` file.
  *
- * Field-for-field `Save.DATAS` as `setToDefaultValues()` builds it (`Save.as:21-48`), with the AS3
- * `SCREAMING_CASE` keys kept as `@SerialName`s. Those names are load-bearing in the same way
- * [com.tripletriad.settings.UserSettings]' snake_case ones are: they are what is on disk, and
- * renaming a field silently would orphan the data behind it. Every field has a default, so a save
- * written by an older build still loads.
+ * `Save.DATAS` as `setToDefaultValues()` builds it (`Save.as:21-48`), with the AS3 `SCREAMING_CASE`
+ * keys kept as `@SerialName`s — **plus a named list of fields this port added**, below. Those names
+ * are load-bearing in the same way [com.tripletriad.settings.UserSettings]' snake_case ones are:
+ * they are what is on disk, and renaming a field silently would orphan the data behind it. Every
+ * field has a default, so a save written by an older build still loads.
+ *
+ * ### Fields the AS3 never had
+ *
+ * This used to say "field-for-field", and it was true until daily quests. The list exists so the
+ * next person adding one knows they are not the first, and so that "is this in the original?" has
+ * an answer that is not a search through `Save.as`.
+ *
+ * - **`QUESTS`** — [quests], the day's daily quests and their progress. Server-owned; see
+ *   [withServerOwnedFrom].
  *
  * ### What is *not* a field
  *
@@ -237,6 +246,13 @@ data class GameSave(
     @SerialName("PVP_MATCHES") val pvpMatches: Int = 0,
     /** Achievement id to the epoch-millis instant it was earned. */
     @SerialName("ACHIEVEMENTS") val achievements: Map<String, Long> = emptyMap(),
+    /**
+     * The current UTC day's quests and their progress. Not an AS3 field — see the header.
+     *
+     * Reset by [com.tripletriad.data.DailyQuestRepository] on the first credit of a new day, and
+     * **owned by the server**: [withServerOwnedFrom] is what stops a client asserting its own.
+     */
+    @SerialName("QUESTS") val quests: DailyQuests = DailyQuests(),
     /**
      * Wins per NPC, keyed by the NPC's **`iconID`** — `'jonas'`, `'tt-master'`. `NPC_W`.
      *
@@ -424,6 +440,28 @@ data class GameSave(
     /** Marks [id] earned at [instant], keeping the first time if it was earned already. */
     fun withAchievement(id: String, instant: Long): GameSave =
         if (hasAchievement(id)) this else copy(achievements = achievements + (id to instant))
+
+    /** This profile with [updated] as its daily quests. */
+    fun withQuests(updated: DailyQuests): GameSave = copy(quests = updated)
+
+    /** Whether today's [questId] has already paid out. */
+    fun hasCompletedQuest(questId: String): Boolean = quests.isCompleted(questId)
+
+    /**
+     * This profile with every **server-owned** field taken from [stored] instead of from here.
+     *
+     * The list of such fields, stated once. A profile arriving from a client is taken at its word
+     * for everything else — the shop, the deck editor, the avatar — because those are things the
+     * player really did decide, and a server that recomputed them would be a server that has to
+     * model every screen. What it must not take on trust is anything a *match* established, and a
+     * completed quest is exactly that: the reward is paid on the strength of matches the server
+     * itself replayed.
+     *
+     * `achievements` belongs on this list too and is deliberately not on it yet: adding it changes
+     * the behaviour of an endpoint that has always accepted them, which is a separate decision.
+     * This function is where it goes when that decision is taken.
+     */
+    fun withServerOwnedFrom(stored: GameSave): GameSave = copy(quests = stored.quests)
 
     companion object {
         /** `Save.as:27`. A moogle name, and the original's default. */

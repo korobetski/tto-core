@@ -122,6 +122,45 @@ class GameSaveTest {
         assertTrue(save.achievements.isEmpty())
     }
 
+    /**
+     * A save written before daily quests existed loads with no quests, rather than failing.
+     *
+     * `QUESTS` is the first field this port added that the AS3 never had — see the header of
+     * [GameSave] — so it is the first one whose *absence* is the ordinary case rather than a
+     * corrupt file. Every profile on every device predates it.
+     */
+    @Test
+    fun aProfileFromBeforeQuestsLoadsWithNone() {
+        val save = json.decodeFromString<GameSave>("""{"USERNAME":"Before","MGP":42}""")
+
+        assertEquals(DailyQuests(), save.quests)
+        assertEquals("", save.quests.day)
+        assertTrue(save.quests.questIds.isEmpty())
+        assertEquals(42, save.mgp, "and the rest of the profile is unaffected")
+    }
+
+    /**
+     * And a save *with* quests round-trips, which is what makes the server's copy authoritative.
+     *
+     * The server stores the whole profile as one JSONB document; a field that encoded but did not
+     * decode would silently reset every player's day on every credited match.
+     */
+    @Test
+    fun questsSurviveARoundTrip() {
+        val save = GameSave.new(createdAt = 0L).withQuests(
+            DailyQuests(
+                day = "2026-08-12",
+                questIds = listOf("q-win-1", "q-play-3"),
+                progress = mapOf("q-play-3" to 2),
+                completed = mapOf("q-win-1" to 1_700_000_000_000L),
+            ),
+        )
+
+        val decoded = json.decodeFromString<GameSave>(json.encodeToString(save))
+
+        assertEquals(save.quests, decoded.quests)
+    }
+
     @Test
     fun forfeitsCannotGoNegative() {
         val save = GameSave(startedMatches = 3, endedMatches = 9)

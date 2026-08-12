@@ -2,9 +2,11 @@ package com.tripletriad.data
 
 import com.tripletriad.model.Achievement
 import com.tripletriad.model.BoonType
+import com.tripletriad.model.DailyQuest
 import com.tripletriad.model.GameRules
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.Item
+import com.tripletriad.model.MatchEvent
 import com.tripletriad.model.MatchResult
 import com.tripletriad.model.Npc
 import kotlin.math.roundToInt
@@ -25,6 +27,15 @@ data class MatchReward(
     val xp: Int,
     val items: List<Item> = emptyList(),
     val achievements: List<Achievement> = emptyList(),
+    /**
+     * The daily quests this match finished.
+     *
+     * Beside [achievements] and for the same reason: the panel that announces a match's result is
+     * the only place a player is told, and a quest that completes silently is a reward nobody
+     * connects to what they just did. Their MGP is **not** folded into [mgp], which stays "what the
+     * match paid" — a caller that wants the total reads it off the quests.
+     */
+    val quests: List<DailyQuest> = emptyList(),
     val mgpBoonSpent: Boolean = false,
     val xpBoonSpent: Boolean = false,
 )
@@ -105,14 +116,35 @@ object MatchRewards {
         }
 
         val award = AchievementRepository().credit(updated, at)
-        return MatchCredit(
+
+        // Quests **after** achievements, and the order is load-bearing. A quest pays MGP, and
+        // `Requirement.MgpHeld` reads MGP — so crediting quests first would settle an MGP Pot tier
+        // one match earlier than it settles today. Running achievements first leaves the existing
+        // semantics exactly as they were; the quest's MGP lands the tier one match later, which is
+        // the same lag a shop purchase already has.
+        //
+        // `isPvp = false` unconditionally: this function takes an `Npc`, so it is player-versus-
+        // environment by construction. Player versus player builds its own `MatchEvent`.
+        val quests = DailyQuestRepository().credit(
             save = award.save,
+            event = MatchEvent(
+                result = result,
+                opponentIconId = npc.iconId,
+                ruleKeys = rules.activeRuleKeys(),
+                isPvp = false,
+            ),
+            at = at,
+        )
+
+        return MatchCredit(
+            save = quests.save,
             reward = MatchReward(
                 result = result,
                 mgp = mgp,
                 xp = xp,
                 items = items,
                 achievements = award.earned,
+                quests = quests.completed,
                 mgpBoonSpent = mgpBoon,
                 xpBoonSpent = xpBoon,
             ),

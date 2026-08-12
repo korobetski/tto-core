@@ -2,6 +2,7 @@ package com.tripletriad.data
 
 import com.tripletriad.model.Boons
 import com.tripletriad.model.CardItem
+import com.tripletriad.model.DailyQuestCatalog
 import com.tripletriad.model.GameRules
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.ItemReward
@@ -9,8 +10,10 @@ import com.tripletriad.model.MatchResult
 import com.tripletriad.model.MgpReward
 import com.tripletriad.model.Npc
 import com.tripletriad.model.NpcLevel
+import com.tripletriad.model.Objective
 import com.tripletriad.model.OrderRule
 import com.tripletriad.model.XpTable
+import com.tripletriad.model.questDayOf
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,6 +49,85 @@ class MatchRewardsTest {
         rules: GameRules = GameRules(),
         seed: Int = 1,
     ) = MatchRewards.credit(save, npc, result, rules, AT, Random(seed))
+
+    /**
+     * A credited match also credits the day's quests, and reports the ones it finished.
+     *
+     * The wiring test: `MatchRewards.credit` is the one path both the client and the server run, so
+     * a quest that is not credited here is a quest the server never pays.
+     */
+    @Test
+    fun aCreditedMatchAdvancesTheDaysQuests() {
+        val credit = credit(MatchResult.WIN)
+
+        assertEquals(questDayOf(AT), credit.save.quests.day, "the day was pinned")
+        assertTrue(credit.save.quests.progress.isNotEmpty(), "nothing was counted")
+        assertTrue(
+            credit.reward.quests.all { it.id in credit.save.quests.completed },
+            "a quest was reported paid without being recorded",
+        )
+    }
+
+    /**
+     * **Achievements are credited before quests**, and the order is not cosmetic.
+     *
+     * A quest pays MGP and `Requirement.MgpHeld` reads MGP, so crediting quests first would settle
+     * an MGP Pot tier one match earlier than it settles today. Running achievements first keeps the
+     * existing semantics exactly; the quest's MGP lands the tier one match later, which is the same
+     * lag a shop purchase already has.
+     *
+     * The fixture makes the two orders give different answers. The profile sits far enough below
+     * `ac-mp1`'s thousand that **match money alone cannot reach it** — a win against an opponent
+     * paying nothing tops up by at most [WIN_BONUS_MAX] — but a quest's 150 clears it easily. So if
+     * quests ran first, the tier would be in *this* credit's achievements. It is in the next one.
+     */
+    @Test
+    fun achievementsAreCreditedBeforeQuestsPayTheirMgp() {
+        val (created, quest) = questWinningOnOneMatch()
+        val nearlyRich = GameSave.new(username = "Tester", createdAt = created)
+            .copy(mgp = MGP_POT_I - WIN_BONUS_MAX - 1)
+
+        val first = credit(MatchResult.WIN, save = nearlyRich, npc = pauper)
+
+        assertTrue(
+            first.reward.quests.any { it.id == quest },
+            "the fixture must complete a quest in this credit",
+        )
+        assertTrue(
+            first.reward.achievements.none { it.id == MGP_POT_ID },
+            "quest money paid the MGP tier inside its own credit — the order flipped",
+        )
+        assertTrue(first.save.mgp >= MGP_POT_I, "and the quest really did clear the threshold")
+
+        // One match later, on the money the quest paid. That is the lag the order buys, and it is
+        // the same one a shop purchase has.
+        val second = credit(MatchResult.WIN, save = first.save, npc = pauper)
+        assertTrue(
+            second.reward.achievements.any { it.id == MGP_POT_ID },
+            "the tier should settle on the next match",
+        )
+    }
+
+    /** A creation date whose day-one draw holds a quest one win finishes, and that quest's id. */
+    private fun questWinningOnOneMatch(): Pair<Long, String> {
+        for (created in 1L..2_000L) {
+            val drawn = DailyQuestCatalog.forDay(AT, created)
+            val one = drawn.firstOrNull {
+                it.objective == Objective.MatchesWon(1) && it.reward.mgp >= WIN_BONUS_MAX
+            }
+            if (one != null) return created to one.id
+        }
+        error("no creation date in range draws a one-win quest — the catalogue must have changed")
+    }
+
+    /** An opponent that pays nothing, so only the random top-up and quest money move the purse. */
+    private val pauper = Npc(
+        id = 2,
+        nameKey = "STR_NPC_Pauper",
+        iconId = "pauper",
+        level = NpcLevel.NONE,
+        mgpReward = MgpReward(win = 0, draw = 0, lose = 0),
+    )
 
     // ---- MGP -------------------------------------------------------------
 
@@ -337,5 +419,12 @@ class MatchRewardsTest {
 
         /** One MGP short of the first `MGP_POT` achievement's 1,000. */
         const val MGP_JUST_SHORT = 1_000
+
+        /** What `ac-mp1` wants held, which quest money must not reach inside its own credit. */
+        const val MGP_POT_I = 1_000
+        const val MGP_POT_ID = "ac-mp1"
+
+        /** `tools.rand(20)` — the most a win can top up by, and the fixture's safety margin. */
+        const val WIN_BONUS_MAX = 20
     }
 }

@@ -101,8 +101,21 @@ data class AppVersion(
  * global card ids, the set model, the per-app gate — are part of the same break and ride this
  * number. Bumping again for each would be four gates and four windows in which a client and a
  * server can be wrong about each other, which is the thing the gate exists to prevent.
+ *
+ * ### 1.1.0 — daily quests, and why they are a minor
+ *
+ * The major's meaning is "the replay can reach a different answer", and quests reach none of it:
+ * `MatchTranscript` is unchanged, so `fingerprint` is unchanged and every transcript credited under
+ * 1.0.0 still hashes the same. What moved is two additive fields with defaults — `GameSave.QUESTS`
+ * and `RewardSummary.questIds` — on types read under `ignoreUnknownKeys` and written under
+ * `encodeDefaults`, so an old peer ignores them and a new one defaults them.
+ *
+ * The minor carries the obligation that wording names: **the replay is unchanged**, and
+ * `ReplayDeterminismTest` passing untouched is what evidences it. Note this is not the engine
+ * artifact's number — that is `coreVersion`, and the two move independently. See
+ * `docs/RELEASING.md` § 1.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(1, 0, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(1, 1, 0)
 
 /**
  * The header both sides put the version in.

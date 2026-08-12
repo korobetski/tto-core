@@ -209,6 +209,15 @@ data class RewardSummary(
     val xp: Int,
     val items: List<Item> = emptyList(),
     val achievementIds: List<String> = emptyList(),
+    /**
+     * The daily quests this match finished, by id — the same reasoning as [achievementIds].
+     *
+     * A `DailyQuest` carries an `Objective`, which is an evaluation rule rather than a value, and
+     * both ends hold `DailyQuestCatalog`. So the id is enough, and it is also what stops the same
+     * MGP being reported twice: [mgp] is what the *match* paid, and a panel that wants the day's
+     * total looks each quest's reward up for itself.
+     */
+    val questIds: List<String> = emptyList(),
 )
 
 /** Why a request about an account was refused. Machine-readable, so wording can change freely. */
