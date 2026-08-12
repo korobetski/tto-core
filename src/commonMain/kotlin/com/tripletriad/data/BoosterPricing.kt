@@ -68,6 +68,14 @@ object BoosterPricing {
      *
      * Returns a distribution summing to 1. A single-card pool is the degenerate case and returns
      * `[1.0]` rather than dividing by a zero `last`.
+     *
+     * ### The second card is likelier than the first
+     *
+     * Worth knowing before reading a pool, because it looks like a bug. Rounding gives index 0 the
+     * half-width bin `[0, ½)` and index 1 a full-width `[½, 1½)`, so a pool's **second** entry
+     * comes out most often; the last index is the mirror image, absorbing everything that overshot.
+     * It is the same fault `docs/analysis/game-rules.md` § 15.6 records for the rule roulette, and
+     * it is reproduced for the same reason — it is the shipped drop rate.
      */
     fun indexOdds(size: Int): List<Double> {
         require(size > 0) { "a pool needs at least one card, had $size" }
