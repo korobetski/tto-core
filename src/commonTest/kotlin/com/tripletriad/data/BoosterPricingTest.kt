@@ -150,7 +150,7 @@ class BoosterPricingTest {
     fun aPackIsWorthMoreThanOneOfItsCards() {
         for (type in BoosterType.entries) {
             val value = BoosterPricing.expectedValue(type, cards)
-            val cheapest = BoosterPricing.MGP_BY_RARITY.getValue(1)
+            val cheapest = CardValue.MGP_BY_RARITY.getValue(1)
 
             assertTrue(
                 value > cheapest * type.size,

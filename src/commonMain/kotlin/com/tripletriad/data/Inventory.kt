@@ -1,6 +1,7 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.BoosterItem
+import com.tripletriad.model.Card
 import com.tripletriad.model.CardItem
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.Item
@@ -80,6 +81,11 @@ sealed interface ItemUse {
  * `InventoryScreen.sortBag()` is [sorted], applied by [add] so the bag is always in order rather
  * than being re-sorted by whoever remembers to.
  */
+// TooManyFunctions: eleven, and they are one subject — a bag, and the four things that can happen
+// to what is in it. `priceOf` is the eleventh and is deliberately not folded into `sell`: the bag
+// screen has to show a price before the player commits to it, and a screen computing it separately
+// is how a button comes to promise one number and pay another.
+@Suppress("TooManyFunctions")
 object Inventory {
     /**
      * Adds [item] to the bag, merging into an existing stack when it is [Item.stackable].
@@ -126,14 +132,32 @@ object Inventory {
         save.bag.firstOrNull { stacksWith(it, item) }?.stack ?: 0
 
     /**
-     * Sells one [item] for its [Item.value] in MGP.
+     * Sells [count] of [item] for what a shop pays.
      *
-     * Refuses anything not [Item.sellable] — which is everything except [CardItem] — and anything
-     * not in the bag, in both cases by returning the profile unchanged.
+     * Refuses anything not [Item.sellable] and anything not in the bag, in both cases by returning
+     * the profile unchanged.
+     *
+     * @param cards the card table, because **only it knows what a card is worth**. The price used
+     *   to be `Item.value`, which a `CardItem` answered as `cardId * 4` — an arithmetic that made
+     *   an FFVIII common worth more than an FFXIV legend and several shop rows profitable to buy
+     *   and immediately resell. See [CardValue], and [priceOf] for what is paid now.
      */
-    fun sell(save: GameSave, item: Item, count: Int = 1): GameSave {
+    fun sell(save: GameSave, item: Item, cards: Map<Int, Card>, count: Int = 1): GameSave {
         if (!item.sellable || count(save, item) < count) return save
-        return remove(save, item, count).withMgp(item.value * count)
+        return remove(save, item, count).withMgp(priceOf(item, cards) * count)
+    }
+
+    /**
+     * What a shop pays for one [item], or 0 for something it will not buy.
+     *
+     * Split out of [sell] because the bag screen has to *show* the figure on the button before the
+     * player commits to it, and a screen computing it a second way is how a button comes to promise
+     * one number and pay another.
+     */
+    fun priceOf(item: Item, cards: Map<Int, Card>): Int = when {
+        !item.sellable -> 0
+        item is CardItem -> CardValue.resaleOf(item.cardId, cards)
+        else -> item.value
     }
 
     /**

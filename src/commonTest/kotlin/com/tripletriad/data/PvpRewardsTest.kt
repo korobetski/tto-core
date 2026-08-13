@@ -21,9 +21,18 @@ import kotlin.test.assertTrue
  *
  * **The wager is the reason this file is careful.** Every other reward in the game only ever adds
  * to a profile; this is the one path that removes something, it is irreversible, and it acts on a
- * possession the player spent real time acquiring. So the tests below pin not only that the card
- * moves on a win and a loss, but that it moves on **neither** of the two cases that look like they
- * might — a draw, and a win with no wager.
+ * possession the player spent real time acquiring.
+ *
+ * ### What moved out of here, and where the missing tests went
+ *
+ * This file used to assert a *policy*: a win takes the loser's card, a loss gives one up, a draw
+ * moves nothing. That policy is no longer this function's, because `TradeRule.DIRECT` breaks it —
+ * under Direct the loser keeps whatever they captured, so cards move towards a player who lost.
+ * "What moves" is now worked out by the referee and handed in already decided.
+ *
+ * So what is pinned below is the narrower and more honest claim: **the lists move exactly what they
+ * name, whatever the result says.** That the right lists are computed is a server test, in
+ * `PvpFlowTest`, where there is a board to compute them from.
  */
 class PvpRewardsTest {
     private val profile = GameSave.new(username = "Tester", createdAt = AT)
@@ -33,13 +42,24 @@ class PvpRewardsTest {
 
     private val seeds = 0 until 40
 
+    @Suppress("LongParameterList")
     private fun credit(
         result: MatchResult,
         save: GameSave = profile,
-        stakeLost: Int? = null,
-        stakeWon: Int? = null,
+        stakeMgp: Int = 0,
+        cardsLost: List<Int> = emptyList(),
+        cardsWon: List<Int> = emptyList(),
         seed: Int = 1,
-    ) = MatchRewards.creditPvp(save, result, GameRules(), AT, stakeLost, stakeWon, Random(seed))
+    ) = MatchRewards.creditPvp(
+        save = save,
+        result = result,
+        rules = GameRules(),
+        at = AT,
+        stakeMgp = stakeMgp,
+        cardsLost = cardsLost,
+        cardsWon = cardsWon,
+        random = Random(seed),
+    )
 
     /**
      * A win pays into the **rank**, not the level.
@@ -82,45 +102,96 @@ class PvpRewardsTest {
         }
     }
 
-    /** A win takes the loser's card, and the profile keeps its own. */
+    /** The won cards arrive, and the profile's own are left alone. */
     @Test
-    fun aWinTakesTheStake() {
-        val credited = credit(MatchResult.WIN, stakeLost = wagered, stakeWon = theirs)
+    fun theWonCardsArrive() {
+        val credited = credit(MatchResult.WIN, cardsWon = listOf(theirs))
 
         assertEquals(1, credited.save.copiesOf(theirs), "the won card did not arrive")
         assertEquals(
             profile.copiesOf(wagered),
             credited.save.copiesOf(wagered),
-            "the winner's own wager was taken too",
+            "the winner's own cards were touched",
         )
     }
 
-    /** A loss hands the card over, and does not also collect one. */
+    /** The lost cards go, and nothing arrives that was not named. */
     @Test
-    fun aLossGivesUpTheStake() {
+    fun theLostCardsGo() {
         val holding = profile.withCard(wagered)
 
-        val credited =
-            credit(MatchResult.LOSE, save = holding, stakeLost = wagered, stakeWon = theirs)
+        val credited = credit(MatchResult.LOSE, save = holding, cardsLost = listOf(wagered))
 
         assertEquals(0, credited.save.copiesOf(wagered), "the wager was not taken")
-        assertEquals(0, credited.save.copiesOf(theirs), "a loss collected the opponent's card")
+        assertEquals(0, credited.save.copiesOf(theirs), "a card nobody named arrived")
     }
 
     /**
-     * A draw moves no card at all.
+     * Empty lists move nothing, whatever the result was.
      *
-     * The case worth stating: any other reading makes a draw a loss for somebody, and a wager that
-     * changed hands on a 5-5 would be the kind of rule players discover by being robbed.
+     * The claim that used to be "a draw moves no card". It is stated over all three results now,
+     * because the function no longer knows which of them is supposed to be free — a draw with an
+     * empty settlement and a Direct loss with an empty one are the same instruction here.
      */
     @Test
-    fun aDrawMovesNoCard() {
+    fun emptyListsMoveNothingAtAnyResult() {
         val holding = profile.withCard(wagered)
 
-        val credited =
-            credit(MatchResult.DRAW, save = holding, stakeLost = wagered, stakeWon = theirs)
+        for (result in MatchResult.entries) {
+            val credited = credit(result, save = holding)
 
-        assertEquals(holding.cards, credited.save.cards)
+            assertEquals(holding.cards, credited.save.cards, "$result moved a card")
+        }
+    }
+
+    /**
+     * Both lists can be non-empty at once, which is what Direct does.
+     *
+     * The case the old shape could not express: a player who lost the match on points still keeps
+     * what they captured, so cards move in both directions in one settlement.
+     */
+    @Test
+    fun bothDirectionsCanMoveInOneSettlement() {
+        val holding = profile.withCard(wagered)
+
+        val credited = credit(
+            MatchResult.LOSE,
+            save = holding,
+            cardsLost = listOf(wagered),
+            cardsWon = listOf(theirs),
+        )
+
+        assertEquals(0, credited.save.copiesOf(wagered), "the captured card was not given up")
+        assertEquals(1, credited.save.copiesOf(theirs), "the loser did not keep what they took")
+    }
+
+    /** The MGP wager is added to the payout on a win and taken out of it on a loss. */
+    @Test
+    fun theMgpWagerMovesBothWays() {
+        val won = credit(MatchResult.WIN, stakeMgp = WAGER)
+        val paid = credit(MatchResult.WIN, stakeMgp = -WAGER)
+
+        assertEquals(WAGER, won.reward.stakeMgp)
+        assertEquals(-WAGER, paid.reward.stakeMgp)
+        assertEquals(
+            WAGER * 2,
+            won.save.mgp - paid.save.mgp,
+            "the two sides of the same wager did not differ by twice it",
+        )
+    }
+
+    /**
+     * A wager bigger than the purse empties it and stops there.
+     *
+     * There is no escrow, and [GameSave.withMgp] floors at zero — so this is what "cannot cover the
+     * bet" actually does. Stated rather than left to be discovered, because the thing that keeps it
+     * from happening is a check on the *server*, and a reader needs to know what is behind it.
+     */
+    @Test
+    fun aWagerBiggerThanThePurseLeavesItAtZero() {
+        val credited = credit(MatchResult.LOSE, stakeMgp = -BIG_WAGER)
+
+        assertEquals(0, credited.save.mgp)
     }
 
     /** With no wager, a win collects nothing — the MGP-only match is the default. */
@@ -136,7 +207,7 @@ class PvpRewardsTest {
     fun losingTheLastCopyLeavesNoGhostEntry() {
         val holding = profile.withCard(wagered)
 
-        val credited = credit(MatchResult.LOSE, save = holding, stakeLost = wagered)
+        val credited = credit(MatchResult.LOSE, save = holding, cardsLost = listOf(wagered))
 
         assertFalse(wagered in credited.save.cards, "a zero-copy entry survived")
         assertFalse(credited.save.ownsCard(wagered))
@@ -147,7 +218,7 @@ class PvpRewardsTest {
     fun losingOneOfSeveralCopiesKeepsTheRest() {
         val holding = profile.withCard(wagered, copies = 3)
 
-        val credited = credit(MatchResult.LOSE, save = holding, stakeLost = wagered)
+        val credited = credit(MatchResult.LOSE, save = holding, cardsLost = listOf(wagered))
 
         assertEquals(2, credited.save.copiesOf(wagered))
     }
@@ -169,7 +240,7 @@ class PvpRewardsTest {
             ),
         )
 
-        val credited = credit(MatchResult.LOSE, save = withDeck, stakeLost = wagered)
+        val credited = credit(MatchResult.LOSE, save = withDeck, cardsLost = listOf(wagered))
 
         assertEquals(withDeck.decks, credited.save.decks, "the deck was edited")
         assertFalse(
@@ -243,6 +314,12 @@ class PvpRewardsTest {
 
     private companion object {
         const val AT = 1_767_268_800_000L
+
+        /** Small enough that a starting purse covers it, and big enough to see. */
+        const val WAGER = 50
+
+        /** More than `GameSave.STARTING_MGP`, so the floor is what is being tested. */
+        const val BIG_WAGER = 100_000
 
         /** 250 rank XP is rank 2, and a win pays 60 before boons. */
         const val RANK_TWO_WINS = 5

@@ -51,6 +51,44 @@ data class Format(
 
     /** Whether [cardId] may be played in this format. */
     fun admitsCard(cardId: Int): Boolean = admits(cardId shr Card.BLOCK_SHIFT)
+
+    /**
+     * The rules a **player** may tick, which is [rules] without Roulette.
+     *
+     * Roulette is in the pool because it can be *drawn*, and it is off this list because it is not
+     * a rule you turn on: `GameRules.roulette` is what the Wheel of Fortune achievements count, and
+     * only `Roulette.augment` may set it. A host asks for a draw and the server performs one — see
+     * `PvpTable.roulette`.
+     */
+    fun choosableRuleKeys(): List<String> = rules.filterNot { it == ROULETTE_KEY }
+
+    /**
+     * [rules] with everything this format does not allow removed.
+     *
+     * Built up from an empty set rather than stripped down from the argument, because
+     * [GameRules.withRuleKey] cannot subtract on its own — `RULE_DEFAULT_OPEN` and its two siblings
+     * are deliberately absent from the key table, being the *absence* of a rule rather than one.
+     * Rebuilding is the only operation that expresses "keep exactly these".
+     *
+     * `roulette` is dropped with everything else: what the server draws is not what the caller
+     * declared.
+     */
+    fun confine(rules: GameRules): GameRules =
+        rules.activeRuleKeys()
+            .filter { it in this.rules }
+            .fold(GameRules()) { kept, key -> kept.withRuleKey(key) }
+
+    /**
+     * Whether every rule [rules] names is one this format allows.
+     *
+     * Compared against `roulette = false` because a caller has no business declaring it: the flag
+     * means "this set went through a draw", and a set that has not been drawn yet has not.
+     */
+    fun admitsRules(rules: GameRules): Boolean = confine(rules) == rules.copy(roulette = false)
+
+    private companion object {
+        const val ROULETTE_KEY = "RULE_ROULETTE"
+    }
 }
 
 /**

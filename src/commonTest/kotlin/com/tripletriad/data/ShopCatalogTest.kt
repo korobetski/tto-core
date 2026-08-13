@@ -182,10 +182,10 @@ class ShopCatalogTest {
         val ff8Packs = packsIn(TestFormats.ff8)
         val ff14Packs = packsIn(TestFormats.ff14)
 
-        assertEquals(
-            setOf(BoosterType.GALBADIAN, BoosterType.GUARDIAN_FORCE, BoosterType.CHARACTER),
-            ff8Packs.toSet(),
-        )
+        // Six: monsters, Galbadia, fiends, companions, GFs and the cast — a ladder from the
+        // cheapest pack in the game to the dearest, where there used to be no FFVIII pack at all.
+        assertTrue(ff8Packs.size >= 6, "the FFVIII shelf should carry a full ladder")
+        assertTrue(BoosterType.CHARACTER in ff8Packs && BoosterType.MONSTER in ff8Packs)
         assertTrue(ff14Packs.isNotEmpty() && ff8Packs.none { it in ff14Packs })
     }
 

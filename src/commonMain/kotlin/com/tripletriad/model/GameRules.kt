@@ -125,6 +125,27 @@ data class GameRules(
         RuleKeys.slots[key]?.applyTo(this)
             ?: RuleKeys.flags[key]?.set(this, true)
             ?: this
+
+    /**
+     * The rule set with [key] cleared, or this one unchanged if it names no rule.
+     *
+     * The inverse of [withRuleKey], and it exists because a **player** now chooses the rules. The
+     * NPC path only ever added — it built a set from a list of constants and never took one back —
+     * so subtraction was never needed. A checkbox needs both directions, and a screen that had to
+     * write its own key-to-setter table to get the second one would be the duplicated transcription
+     * [RuleKeys] exists to prevent.
+     *
+     * Clearing one of the three exclusive slots returns it to its default rather than to the other
+     * member: unticking All Open means no Open rule, not Three Open.
+     */
+    fun withoutRuleKey(key: String): GameRules =
+        RuleKeys.slots[key]?.clearIn(this)
+            ?: RuleKeys.flags[key]?.set(this, false)
+            ?: this
+
+    /** [withRuleKey] or [withoutRuleKey], for a caller holding a checkbox rather than an intent. */
+    fun toggling(key: String, on: Boolean): GameRules =
+        if (on) withRuleKey(key) else withoutRuleKey(key)
 }
 
 /**
@@ -145,14 +166,24 @@ data class GameRules(
  * i18n keys for UI headings rather than rules.
  */
 internal object RuleKeys {
-    /** One of the three mutually exclusive enum slots, at a particular value. */
+    /**
+     * One of the three mutually exclusive enum slots, at a particular value.
+     *
+     * [clear] is the slot's *default*, not the other member: a slot holds at most one rule, so
+     * taking that rule away leaves the absence of one. It is written per-slot rather than derived
+     * because only the table knows which of the three enums a key belongs to.
+     */
     class Slot(
         private val read: (GameRules) -> Boolean,
         private val write: (GameRules) -> GameRules,
+        private val clear: (GameRules) -> GameRules,
     ) {
         fun isActiveIn(rules: GameRules): Boolean = read(rules)
 
         fun applyTo(rules: GameRules): GameRules = write(rules)
+
+        /** Clears this slot, but only if it is *this* member that is set. */
+        fun clearIn(rules: GameRules): GameRules = if (read(rules)) clear(rules) else rules
     }
 
     /** One of the nine independent booleans. */
@@ -167,24 +198,37 @@ internal object RuleKeys {
         "RULE_ALL_OPEN" to Slot(
             { it.open == OpenRule.ALL_OPEN },
             { it.copy(open = OpenRule.ALL_OPEN) },
+            { it.copy(open = OpenRule.NONE) },
         ),
         "RULE_THREE_OPEN" to Slot(
             { it.open == OpenRule.THREE_OPEN },
             { it.copy(open = OpenRule.THREE_OPEN) },
+            { it.copy(open = OpenRule.NONE) },
         ),
-        "RULE_ORDER" to Slot({ it.order == OrderRule.ORDER }, { it.copy(order = OrderRule.ORDER) }),
-        "RULE_CHAOS" to Slot({ it.order == OrderRule.CHAOS }, { it.copy(order = OrderRule.CHAOS) }),
+        "RULE_ORDER" to Slot(
+            { it.order == OrderRule.ORDER },
+            { it.copy(order = OrderRule.ORDER) },
+            { it.copy(order = OrderRule.FREE) },
+        ),
+        "RULE_CHAOS" to Slot(
+            { it.order == OrderRule.CHAOS },
+            { it.copy(order = OrderRule.CHAOS) },
+            { it.copy(order = OrderRule.FREE) },
+        ),
         "RULE_ASCENSION" to Slot(
             { it.typeRule == TypeRule.ASCENSION },
             { it.copy(typeRule = TypeRule.ASCENSION) },
+            { it.copy(typeRule = TypeRule.NONE) },
         ),
         "RULE_DESCENSION" to Slot(
             { it.typeRule == TypeRule.DESCENSION },
             { it.copy(typeRule = TypeRule.DESCENSION) },
+            { it.copy(typeRule = TypeRule.NONE) },
         ),
         "RULE_ELEMENTAL" to Slot(
             { it.typeRule == TypeRule.ELEMENTAL },
             { it.copy(typeRule = TypeRule.ELEMENTAL) },
+            { it.copy(typeRule = TypeRule.NONE) },
         ),
     )
 

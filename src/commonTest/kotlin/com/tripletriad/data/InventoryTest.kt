@@ -2,6 +2,7 @@ package com.tripletriad.data
 
 import com.tripletriad.model.BoosterItem
 import com.tripletriad.model.BoosterType
+import com.tripletriad.model.Card
 import com.tripletriad.model.CardItem
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.MiscItem
@@ -22,6 +23,22 @@ import kotlin.test.assertTrue
  */
 class InventoryTest {
     private val empty = GameSave.new(createdAt = 0)
+
+    private fun card(number: Int, rarity: Int) = Card(
+        id = Card.idFor(block = 1, number = number),
+        nameKey = "STR_TEST_$number",
+        name = "Test $number",
+        top = 1,
+        right = 1,
+        bottom = 1,
+        left = 1,
+        rarity = rarity,
+    )
+
+    /** Two cards a shop values differently, which is the whole point of the new price. */
+    private val common = card(number = 10, rarity = 1)
+    private val rare = card(number = 50, rarity = 5)
+    private val cards: Map<Int, Card> = listOf(common, rare).associateBy { it.id }
 
     @Test
     fun addingAnItemPutsItInTheBag() {
@@ -87,21 +104,40 @@ class InventoryTest {
         assertEquals(save, Inventory.remove(save, CardItem(99)))
     }
 
+    /**
+     * A sale pays what the *rarity* is worth, not what the id happens to be.
+     *
+     * It used to assert `id * 4`, which was `CardItem.as:25` and which global ids turned into
+     * nonsense — see [CardValue]. What the price is, is that object's business; what is asserted
+     * here is that selling routes through it and takes the card away.
+     */
     @Test
-    fun sellingACardPaysItsValueAndRemovesIt() {
-        val save = Inventory.add(empty.copy(mgp = 0), CardItem(50, 2))
+    fun sellingACardPaysWhatItIsWorthAndRemovesIt() {
+        val save = Inventory.add(empty.copy(mgp = 0), CardItem(rare.id, 2))
 
-        val sold = Inventory.sell(save, CardItem(50))
+        val sold = Inventory.sell(save, CardItem(rare.id), cards)
 
-        assertEquals(200, sold.mgp, "CardItem.as:25 — value is id * 4")
-        assertEquals(1, Inventory.count(sold, CardItem(50)))
+        assertEquals(CardValue.resaleOf(rare.id, cards), sold.mgp)
+        assertEquals(1, Inventory.count(sold, CardItem(rare.id)), "one of the two is left")
+    }
+
+    /** And a rarer card is worth more, which the id-based price could not promise. */
+    @Test
+    fun aRarerCardSellsForMore() {
+        assertTrue(
+            CardValue.resaleOf(rare.id, cards) > CardValue.resaleOf(common.id, cards),
+            "a five-star must outsell a common",
+        )
     }
 
     @Test
     fun sellingSeveralAtOncePaysForEach() {
-        val save = Inventory.add(empty.copy(mgp = 0), CardItem(10, 3))
+        val save = Inventory.add(empty.copy(mgp = 0), CardItem(common.id, 3))
 
-        assertEquals(120, Inventory.sell(save, CardItem(10), count = 3).mgp)
+        assertEquals(
+            CardValue.resaleOf(common.id, cards) * 3,
+            Inventory.sell(save, CardItem(common.id), cards, count = 3).mgp,
+        )
     }
 
     @Test
@@ -109,7 +145,7 @@ class InventoryTest {
         val booster = BoosterItem(BoosterType.BRONZE)
         val save = Inventory.add(empty.copy(mgp = 0), booster)
 
-        val attempted = Inventory.sell(save, booster)
+        val attempted = Inventory.sell(save, booster, cards)
 
         assertEquals(save, attempted)
         assertEquals(0, attempted.mgp)
@@ -117,7 +153,7 @@ class InventoryTest {
 
     @Test
     fun sellingWhatIsNotHeldChangesNothing() {
-        assertEquals(empty, Inventory.sell(empty, CardItem(1)))
+        assertEquals(empty, Inventory.sell(empty, CardItem(common.id), cards))
     }
 
     /**

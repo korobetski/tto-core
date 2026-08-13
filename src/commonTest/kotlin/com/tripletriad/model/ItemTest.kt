@@ -82,11 +82,19 @@ class ItemTest {
         assertEquals(items, json.decodeFromString<List<Item>>(json.encodeToString(items)))
     }
 
-    /** `CardItem.as:25` — value is the card id times four, so later cards sell for more. */
+    /**
+     * A card item no longer prices itself, and says so with a zero.
+     *
+     * `CardItem.as:25` was `value = _cardId * 4`, and this test used to pin it. That arithmetic was
+     * a rarity proxy while an id indexed one ascending table, and global ids made it absurd — an
+     * FFVIII common outsold every FFXIV rare. Worth is a function of rarity, which only the card
+     * table knows, so the price moved to `CardValue` and `Inventory.sell` is handed a catalogue.
+     */
     @Test
-    fun cardItemValueIsIdTimesFour() {
-        assertEquals(4, CardItem(1).value)
-        assertEquals(400, CardItem(100).value)
+    fun aCardItemCannotPriceItself() {
+        assertEquals(0, CardItem(1).value)
+        assertEquals(0, CardItem(100).value)
+        assertTrue(CardItem(1).sellable, "it is still sellable — just not at a price it knows")
     }
 
     /**
@@ -145,12 +153,12 @@ class ItemTest {
     /**
      * `BoosterItem.as:19-27`, transcribed. Spot-checked rather than restated in full.
      *
-     * Nine of the twelve are the AS3's. The other three are the FFVIII packs — Galbadian, Guardian
-     * Force and Character — which the FFVIII shelf never had; see [BoosterType].
+     * Nine of the fifteen are the AS3's. The other six are the FFVIII packs, which that shelf never
+     * had at all — see [BoosterType].
      */
     @Test
     fun boosterPoolsMatchTheAs3Constants() {
-        assertEquals(12, BoosterType.entries.size)
+        assertEquals(15, BoosterType.entries.size)
         assertEquals(listOf(4, 5, 8, 12, 27, 38).map(::ff14), BoosterType.BRONZE.pool)
         assertEquals(listOf(31, 32, 47, 51, 64, 119).map(::ff14), BoosterType.GARLEAN.pool)
         assertEquals(13, BoosterType.BEAST.pool.size)

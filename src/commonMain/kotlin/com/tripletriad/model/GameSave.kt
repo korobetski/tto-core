@@ -396,6 +396,23 @@ data class GameSave(
      * before the match starts; a credit path that threw halfway through would leave a match half
      * settled, which is worse than a subtraction that cannot go negative.
      */
+    /**
+     * How many copies of [cardId] are **not** promised to a deck.
+     *
+     * What a player may safely part with. Selling is the caller — see the collection browser — and
+     * without this it would be possible to sell the copy a saved deck is built around, leaving a
+     * deck `Deck.isAffordable` refuses and a match the server will not accept. The player would
+     * meet that as a rejection at the point of play, which is the worst place to learn it.
+     *
+     * The **maximum** over decks rather than the sum: five decks each fielding one copy of a card
+     * need one copy between them, not five. A deck listing the same card twice needs two, which is
+     * why the count is per deck rather than a membership test.
+     */
+    fun spareCopiesOf(cardId: Int): Int {
+        val reserved = decks.maxOfOrNull { deck -> deck.cards.count { it == cardId } } ?: 0
+        return (copiesOf(cardId) - reserved).coerceAtLeast(0)
+    }
+
     fun withoutCard(cardId: Int, copies: Int = 1): GameSave {
         require(copies > 0) { "copies must be positive, was $copies" }
         val left = copiesOf(cardId) - copies

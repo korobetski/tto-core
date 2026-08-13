@@ -8,6 +8,7 @@ import com.tripletriad.model.HandVisibility
 import com.tripletriad.model.MatchState
 import com.tripletriad.model.MatchView
 import com.tripletriad.model.OpenRule
+import com.tripletriad.model.TradeRule
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -167,10 +168,20 @@ class PvpMatchTest {
         assertNull(view.toMatchView(catalogue))
     }
 
-    /** The stake is a closed pair, and both survive the wire. */
+    /**
+     * Every stake survives the wire — both halves, over all four trade rules and none.
+     *
+     * Swept rather than sampled because [TradeRule] is what the settlement `when`s exhaust: a
+     * member added later that nobody encoded would be caught here, rather than at the moment
+     * somebody lost a card under it.
+     */
     @Test
-    fun bothStakesRoundTrip() {
-        for (stake in listOf(PvpStake.None, PvpStake.Cards(261, 271))) {
+    fun everyStakeRoundTrips() {
+        val stakes = TradeRule.entries.flatMap { trade ->
+            listOf(PvpStake(mgp = 0, trade = trade), PvpStake(mgp = WAGER, trade = trade))
+        }
+
+        for (stake in stakes) {
             val sent = wire().copy(stake = stake)
 
             val received = json.decodeFromString(
@@ -180,6 +191,47 @@ class PvpMatchTest {
 
             assertEquals(stake, received.stake)
         }
+    }
+
+    /** The stake that risks nothing says so, and is what an unstated wager means. */
+    @Test
+    fun theFreeStakeIsTheDefault() {
+        assertTrue(PvpStake.None.isFree)
+        assertEquals(PvpStake.None, wire().stake)
+        assertFalse(PvpStake(mgp = WAGER).isFree)
+        assertFalse(PvpStake(trade = TradeRule.ONE).isFree)
+    }
+
+    /**
+     * A hand comes back in its own side's colour, not the catalogue's.
+     *
+     * `Card.owner` defaults to blue on a catalogue card, so a red player's own five would arrive
+     * stamped as the opponent's — and `CardFace` fills from exactly that field. The catalogue here
+     * is deliberately built at the default so the stamping is what is under test rather than an
+     * accident of the fixture.
+     */
+    @Test
+    fun aHandIsStampedWithTheSideThatHoldsIt() {
+        val defaults = catalogue.mapValues { (_, card) -> card.copy(owner = CardColor.BLUE) }
+
+        val view = wire(side = CardColor.RED, visibility = HandVisibility(ALL_SLOTS))
+            .toMatchView(defaults)
+
+        assertNotNull(view)
+        assertTrue(view.ownHand.all { it.owner == CardColor.RED }, "red's own hand came back blue")
+        assertTrue(
+            view.opponentHand.filterNotNull().all { it.owner == CardColor.BLUE },
+            "the opponent's revealed cards were not their own colour",
+        )
+    }
+
+    /** A live match carries no pick list: there is nothing to claim until one has ended. */
+    @Test
+    fun aLiveViewCarriesNoPickList() {
+        val view = wire()
+
+        assertEquals(PvpMatchStatus.PLAYING, view.status)
+        assertNull(view.outcome)
     }
 
     /** The waiting side is sent no playable slots, so a client cannot offer a move out of turn. */
@@ -201,5 +253,13 @@ class PvpMatchTest {
         val view = wire(open, visibility = HandVisibility(red.indices.toSet()))
 
         assertContentEquals(red.map { it.id }, view.opponentHand)
+    }
+
+    private companion object {
+        /** A wager big enough to tell apart from the default of nothing. */
+        const val WAGER = 50
+
+        /** Every slot revealed, which is what All Open produces. */
+        val ALL_SLOTS: Set<Int> = (0 until HAND_SIZE).toSet()
     }
 }

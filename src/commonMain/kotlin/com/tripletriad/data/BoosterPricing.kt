@@ -18,8 +18,8 @@ import kotlin.math.roundToInt
  * card is added to its pool, and a number in a list does not know that.
  *
  * So a booster's price is **computed from its contents**. Change a pool, add a card, resize a pack,
- * and the shop reprices itself. The one thing authored here is [MGP_BY_RARITY] — what a star is
- * worth — which is a design decision and belongs in exactly one place.
+ * and the shop reprices itself. The one thing authored anywhere is [CardValue.MGP_BY_RARITY] —
+ * what a star is worth — which is a design decision and belongs in exactly one place.
  *
  * ### The draw distribution is exact, not sampled
  *
@@ -32,9 +32,9 @@ import kotlin.math.roundToInt
  *
  * ### The ladder, and one number it is deliberately not
  *
- * [MGP_BY_RARITY] triples with each star, which is what makes a five-star pack cost real money and
- * a starter pack cost a couple of matches. Calibrated against the one authored price that was
- * plausible: the AS3 charges 520 for Bronze, and this gives 500.
+ * [CardValue.MGP_BY_RARITY] triples with each star, which is what makes a five-star pack cost real
+ * money and a starter pack cost a couple of matches. Calibrated against the one authored price that
+ * was plausible: the AS3 charges 520 for Bronze, and this gives 500.
  *
  * It is **not** `CardItem.value`, the game's sale price, which is `cardId * 4`. That was a rarity
  * proxy while ids were indices into one ascending table and stopped being one when ids went global:
@@ -44,18 +44,7 @@ import kotlin.math.roundToInt
  * and is not changed here.
  */
 object BoosterPricing {
-    /**
-     * What one card of each star count is worth, in MGP. The one authored number in this file.
-     *
-     * Roughly triple per star, which matches how the card table is shaped — eleven five-stars
-     * against a hundred and fifty-three cards in the FFXIV set — and how a player experiences the
-     * difference. A linear ladder would make a five-star pack cost five times a common one rather
-     * than eighty, and no player believes that.
-     */
-    val MGP_BY_RARITY: Map<Int, Int> = mapOf(1 to 40, 2 to 120, 3 to 360, 4 to 1_100, 5 to 3_300)
-
-    /** What the shop charges over the expected contents: a pack is a gamble, and a gamble has
-     * a rake. */
+    /** What the shop charges over the expected contents: a pack is a gamble with a rake. */
     const val MARKUP: Double = 1.2
 
     /**
@@ -148,7 +137,7 @@ object BoosterPricing {
         }
 
     private fun worthOf(cardId: Int, cards: Map<Int, Card>): Int =
-        MGP_BY_RARITY[cards[cardId]?.rarity] ?: MGP_BY_RARITY.getValue(1)
+        CardValue.worthOf(cardId, cards)
 
     /** `F(t) = t − t·ln t`, the CDF of a product of two independent uniforms, clamped to [0, 1]. */
     private fun productCdf(t: Double): Double =

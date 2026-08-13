@@ -40,7 +40,11 @@ group = "com.tripletriad"
 //
 // A property rather than a constant edited by hand, because the alternative is a tag and an
 // artifact that eventually disagree about what `v0.3.0` is, and nothing in the build would notice.
-version = providers.gradleProperty("coreVersion").getOrElse("0.3.1")
+//
+// It has to be raised as the release it is heading towards, not left behind: a default two releases
+// under what the consumers pin publishes a local artifact nothing resolves, and the comment above
+// then describes a loop that does not work.
+version = providers.gradleProperty("coreVersion").getOrElse("0.6.0-SNAPSHOT")
 
 kotlin {
     // 17, matching `:shared`. The server runs 21 and consumes this happily; the reverse would not

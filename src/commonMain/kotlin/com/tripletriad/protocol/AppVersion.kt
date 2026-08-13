@@ -14,11 +14,23 @@ import kotlinx.serialization.Serializable
  *
  * ### What a major bump means, precisely
  *
- * **The replay can reach a different answer.** That is a wider promise than "the wire format
- * changed": it covers the card and opponent tables, and it covers `RulesEngine`, `MatchState`,
- * `Roulette` and `MatchAi`. It is the same event that bumps [TRANSCRIPT_VERSION] and the same event
- * that breaks the goldens in `ReplayDeterminismTest` — three expressions of one decision, and they
- * move together.
+ * **A peer running the previous major cannot be talked to.** There are two ways to earn that, and
+ * this paragraph used to name only one.
+ *
+ * The first is that **the replay can reach a different answer**. That is a wider promise than "the
+ * wire format changed": it covers the card and opponent tables, and it covers `RulesEngine`,
+ * `MatchState`, `Roulette` and `MatchAi`. When that is what happened, [TRANSCRIPT_VERSION] bumps
+ * with it and the goldens in `ReplayDeterminismTest` break — three expressions of one decision.
+ *
+ * The second is that **a message one side sends can no longer be read by the other**. Additive
+ * fields do not qualify: every type here is read under `ignoreUnknownKeys` and written under
+ * `encodeDefaults`, so an old peer ignores what it does not know and a new one defaults what it was
+ * not sent. What does qualify is a field that changes shape, a sealed hierarchy that becomes a
+ * class, or an enum that gains a member an old peer fails on rather than ignores.
+ *
+ * The two are independent, and 2.0.0 is the case that proves it: the wire broke and the replay did
+ * not. So the three do **not** always move together — the goldens passing untouched across a major
+ * is a legitimate outcome, not evidence of a missed bump.
  *
  * Without the gate that follows from it, the failure mode is nasty and misdiagnosed: a server
  * dealing from an older card table rejects every transcript from an updated client, and the
@@ -114,8 +126,27 @@ data class AppVersion(
  * `ReplayDeterminismTest` passing untouched is what evidences it. Note this is not the engine
  * artifact's number — that is `coreVersion`, and the two move independently. See
  * `docs/RELEASING.md` § 1.
+ *
+ * ### 2.0.0 — player-versus-player wagers, and a major with no replay change
+ *
+ * The first bump earned on the *second* ground above. Three PvP types changed shape in ways an old
+ * peer cannot survive:
+ *
+ * - `PvpStake` went from a sealed interface — encoded with a `type` discriminator — to a plain
+ *   class. An old peer reading `{"mgp":50,"trade":"ONE"}` as a sealed hierarchy fails on the
+ *   missing discriminator; a new peer reading the old encoding fails on the unknown key.
+ * - `PvpMatchStatus` gained `AWAITING_CLAIM`. An unknown enum member is not ignorable — it is a
+ *   value the reader has no case for — so a 1.x client polling a 2.x match would fail to parse it
+ *   at exactly the moment it was owed a card.
+ * - `PvpOutcome` lost `cardWon`/`cardLost` for the plural forms. Dropping a field is survivable
+ *   under `ignoreUnknownKeys`; being *silently* told nothing was won is not, which is why this
+ *   rides the same break rather than being defaulted.
+ *
+ * `MatchTranscript` is untouched, so `fingerprint` is untouched and every transcript credited under
+ * 1.x still hashes the same. [TRANSCRIPT_VERSION] therefore does not move and the goldens pass
+ * unchanged — the outcome the rewritten paragraph above now allows for.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(1, 1, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(2, 0, 0)
 
 /**
  * The header both sides put the version in.

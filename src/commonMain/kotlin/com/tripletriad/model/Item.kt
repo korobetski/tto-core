@@ -105,11 +105,17 @@ enum class PotionType(val modifier: BoonModifier) {
  * source game's — a hundred and ten cards in ten levels, the top two of which are the Guardian
  * Forces and the cast:
  *
+ * - [MONSTER] — the bestiary of levels 1 and 2. The cheapest pack in the game.
  * - [GALBADIAN] — the Galbadian military and its machines, drawn from levels 3 to 8.
+ * - [FIEND] — the bosses of levels 5 to 7, sharing no card with [GALBADIAN].
+ * - [COMPANION] — the five level-8 companions, which [GUARDIAN_FORCE] deliberately excludes.
  * - [GUARDIAN_FORCE] — the sixteen GF cards, level 9. `Boko` and `Angelo` are left out: they are
  *   level 8 companions rather than Guardian Forces, and a pack that promises GFs should hold GFs.
  * - [CHARACTER] — the eleven level-10 character cards, Squall last. The most expensive thing in
  *   the shop, and the only pack whose every card is a five-star.
+ *
+ * Six against the FFXIV shelf's nine, and covering the set's whole ladder rather than only its top:
+ * the first three FFVIII packs were all premium, which left a new FFVIII collection nothing to buy.
  *
  * ### What a pack holds
  *
@@ -169,6 +175,44 @@ enum class BoosterType(
     @SerialName("GUARDIAN_FORCE_BOOSTER")
     GUARDIAN_FORCE(
         listOf(595, 596, 597, 598, 599, 600, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611),
+        PACK_ICON,
+        size = BOOSTER_PREMIUM_SIZE,
+    ),
+
+    /**
+     * The bestiary: what a player fights before they fight anybody.
+     *
+     * Levels 1 and 2, and the cheapest thing on either shelf — the FFVIII answer to Bronze, which
+     * a new character can afford after three or four matches.
+     */
+    @SerialName("MONSTER_BOOSTER")
+    MONSTER(
+        listOf(513, 515, 518, 522, 527, 531, 544, 546, 548, 552, 558, 564),
+        PACK_ICON,
+    ),
+
+    /**
+     * The bosses of levels 5 to 7 — the fights, rather than the wildlife or the army.
+     *
+     * Deliberately overlapping [GALBADIAN] on nothing: Galbadia's machines are its own pack, and a
+     * player buying both should be buying two different things.
+     */
+    @SerialName("FIEND_BOOSTER")
+    FIEND(
+        listOf(571, 572, 574, 576, 577, 578, 579, 580, 581, 582, 584, 585, 587, 588, 589),
+        PACK_ICON,
+    ),
+
+    /**
+     * The five level-8 companions: Chubby Chocobo, Angelo, Gilgamesh, Mini Mog and Chicobo.
+     *
+     * The cards [GUARDIAN_FORCE] leaves out, and the reason it does — they sit at level 8 with the
+     * GFs' rarity and none of their standing. A five-card pool is the smallest that ships, so this
+     * is the one pack where the guaranteed slot is nearly the whole of it.
+     */
+    @SerialName("COMPANION_BOOSTER")
+    COMPANION(
+        listOf(590, 591, 592, 593, 594),
         PACK_ICON,
         size = BOOSTER_PREMIUM_SIZE,
     ),
@@ -309,8 +353,19 @@ data class CardItem(
 
     override val descriptionKey: String get() = "APP_CARD_ITEM_DESC"
 
-    /** `CardItem.as:25` — `value = _cardId * 4`. Later cards are worth more because ids ascend. */
-    override val value: Int get() = cardId * MGP_PER_ID
+    /**
+     * **Not** what a card is worth. See [com.tripletriad.data.CardValue].
+     *
+     * `CardItem.as:25` said `value = _cardId * 4`, which was a rarity proxy while an id indexed one
+     * ascending table and became nonsense the day ids went global: an FFVIII common outsold every
+     * FFXIV rare because its id was a bigger number, and the shop sold several of those commons
+     * for less than they resold for. Worth is a function of *rarity*, which only the card table
+     * knows — which is why this cannot answer, and does not pretend to.
+     *
+     * Zero rather than a removal from [Item]: the field is what the three unsellable kinds say, and
+     * a card's price now comes from `Inventory.sell`, which is handed the catalogue.
+     */
+    override val value: Int get() = 0
 
     override val sellable: Boolean get() = true
     override val stackable: Boolean get() = true
@@ -318,10 +373,6 @@ data class CardItem(
     override val dropable: Boolean get() = true
 
     override fun withStack(count: Int): CardItem = copy(stack = count)
-
-    private companion object {
-        const val MGP_PER_ID = 4
-    }
 }
 
 /**

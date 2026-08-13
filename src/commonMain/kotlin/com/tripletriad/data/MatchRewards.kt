@@ -38,6 +38,20 @@ data class MatchReward(
     val quests: List<DailyQuest> = emptyList(),
     val mgpBoonSpent: Boolean = false,
     val xpBoonSpent: Boolean = false,
+    /**
+     * What the wager moved, and only ever non-empty for a player-versus-player match.
+     *
+     * Apart from [mgp] and [items] rather than folded into them, because they are different facts
+     * to put in front of a player: [mgp] is what the match *paid*, [items] is what dropped, and
+     * this is what was **risked**. A panel that added a lost wager into the payout would show a win
+     * that looks like a loss.
+     *
+     * [stakeMgp] is signed — positive won, negative paid. Both card lists can be non-empty at once,
+     * under `TradeRule.DIRECT`, where each side keeps whatever it captured.
+     */
+    val stakeMgp: Int = 0,
+    val cardsWon: List<Int> = emptyList(),
+    val cardsLost: List<Int> = emptyList(),
 )
 
 /** The profile after a match, and what the match paid. */
@@ -179,20 +193,29 @@ object MatchRewards {
      * through [GameSave.withPvpXp], and `PVP_MATCHES` counts it. Level XP stays what beating the
      * environment pays. That is the original's own division, honoured rather than invented.
      *
-     * ### The stake
+     * ### The stake is applied, not decided
      *
-     * Losing hands one card to the winner, who gains a copy — see [GameSave.withoutCard] for what
-     * that does and does not touch. A draw moves nothing: both players keep what they put up, which
-     * is the only reading that does not make a draw a loss for somebody.
+     * This function used to hold the policy: a win took the opponent's card, a loss gave one up, a
+     * draw moved nothing. That policy has moved out, to the referee, and it had to — under
+     * `TradeRule.DIRECT` the **loser** can win cards too, so "what moves" is no longer a function
+     * of the result. What arrives here is the settlement already worked out, and it is applied
+     * unconditionally.
      *
-     * **This function does not check that the wager was owned.** The server does, before the match
-     * is created, because that is the only moment at which refusing costs nobody a played game.
+     * Two things this deliberately does not do, both because it cannot:
      *
-     * @param opponentName who was played. Recorded on the match, not on the profile: there is no
-     *   `PVP_W` counter and no achievement keyed by opponent, so nothing on the save wants it.
-     * @param stakeLost the card this profile put up, or null when the match was played for MGP
-     *   only. Non-null on both sides of a wagered match — each is the other's [stakeWon].
-     * @param stakeWon the card this profile takes, on a win.
+     * **It does not check that the cards were owned.** The server does, before the match is
+     * created, because that is the only moment at which refusing costs nobody a played game.
+     *
+     * **There is no escrow.** [GameSave.withMgp] floors at zero, so a player whose purse emptied
+     * mid-match pays what they have and the winner is still credited in full. Affordability is
+     * checked when a table is opened and again when it is joined; between those and settlement
+     * there is a window, and it is accepted rather than closed — holding MGP aside would mean a
+     * balance that is not the number on screen.
+     *
+     * @param stakeMgp signed, from this profile's side: positive won, negative paid.
+     * @param cardsLost the ids this profile gives up. Empty is the common case.
+     * @param cardsWon the ids this profile takes. Can be non-empty alongside [cardsLost] under
+     *   Direct, where both sides keep what they captured.
      */
     @Suppress("LongParameterList")
     fun creditPvp(
@@ -200,8 +223,9 @@ object MatchRewards {
         result: MatchResult,
         rules: GameRules,
         at: Long,
-        stakeLost: Int? = null,
-        stakeWon: Int? = null,
+        stakeMgp: Int = 0,
+        cardsLost: List<Int> = emptyList(),
+        cardsWon: List<Int> = emptyList(),
         random: Random = Random.Default,
     ): MatchCredit {
         val mgpBoon = save.boons.mgp > 0
@@ -215,20 +239,22 @@ object MatchRewards {
         var updated = save
             .endingMatch()
             .copy(stats = save.stats.recordingStats(result))
-            .withMgp(mgp)
+            // The payout and the wager in one call, because they are one movement of one purse.
+            // Applying them separately would floor at zero twice, and a player who could not cover
+            // the bet would keep the difference.
+            .withMgp(mgp + stakeMgp)
             .withPvpXp(xp.toLong())
         if (mgpBoon) updated = updated.copy(boons = updated.boons.spending(BoonType.MGP))
         if (xpBoon) updated = updated.copy(boons = updated.boons.spending(BoonType.XP))
 
         // Rule wins are recorded as they are in PvE — `RULES_W` is about the rule, not about who
         // was on the other side of it. There is no NPC win to record.
-        if (result == MatchResult.WIN) {
-            updated = updated.withRulesWin(rules)
-            stakeWon?.let { updated = updated.withCard(it) }
-        }
-        if (result == MatchResult.LOSE) {
-            stakeLost?.let { updated = updated.withoutCard(it) }
-        }
+        if (result == MatchResult.WIN) updated = updated.withRulesWin(rules)
+
+        // Unconditional, and not inside the branches above: under Direct the loser wins cards too,
+        // so what moves is the settlement's business, not the result's. See the KDoc.
+        for (id in cardsWon) updated = updated.withCard(id)
+        for (id in cardsLost) updated = updated.withoutCard(id)
 
         val award = AchievementRepository().credit(updated, at)
         val quests = DailyQuestRepository().credit(
@@ -255,6 +281,9 @@ object MatchRewards {
                 quests = quests.completed,
                 mgpBoonSpent = mgpBoon,
                 xpBoonSpent = xpBoon,
+                stakeMgp = stakeMgp,
+                cardsWon = cardsWon,
+                cardsLost = cardsLost,
             ),
         )
     }

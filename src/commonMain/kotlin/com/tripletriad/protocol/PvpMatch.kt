@@ -9,6 +9,7 @@ import com.tripletriad.model.GameRules
 import com.tripletriad.model.MatchResult
 import com.tripletriad.model.MatchView
 import com.tripletriad.model.PlacedCard
+import com.tripletriad.model.TradeRule
 import com.tripletriad.model.TurnOrder
 import kotlinx.serialization.Serializable
 
@@ -100,8 +101,14 @@ data class PvpMatchView(
         val named = hand + opponentHand.filterNotNull() + cells.mapNotNull { it?.cardId }
         if (named.any { it !in cards }) return null
 
-        val ownCards = hand.map(cards::getValue)
-        val theirCards = opponentHand.map { id -> id?.let(cards::getValue) }
+        // Stamped, not taken as they come. A catalogue card carries `owner = BLUE` as a default
+        // rather than a fact, so a red player's own hand would arrive in the opponent's colour —
+        // and `CardFace` fills from exactly this field. `MatchState.start` stamps its hands for the
+        // same reason; this is that step for a hand that arrived as integers.
+        val ownCards = hand.map { cards.getValue(it).copy(owner = side) }
+        val theirCards = opponentHand.map { id ->
+            id?.let { cards.getValue(it).copy(owner = side.opposite()) }
+        }
         val board = Board(
             cells = cells.map { cell ->
                 cell?.let { PlacedCard(cards.getValue(it.cardId), it.owner) }
@@ -163,25 +170,47 @@ data class PvpMatchView(
  *
  * [ABANDONED] and [FORFEITED] are separate because they are different facts: one player walked away
  * from a match that had begun and lost it, versus a match that never started because nobody
- * arrived. Collapsing them would make a queue that timed out look like a defeat on the record.
+ * arrived. Collapsing them would make a table that lapsed look like a defeat on the record.
  */
 @Serializable
 enum class PvpMatchStatus {
     /** Paired, both sides notified, waiting for the first move. */
     PLAYING,
 
-    /** Nine cards placed, or a sudden-death rematch decided it. */
+    /**
+     * The board is done and the winner still owes a choice.
+     *
+     * Only [TradeRule.ONE] and [TradeRule.DIFF] reach it: those are the two wagers where somebody
+     * has to *name* the cards they are taking, and nothing can be credited until they do. Every
+     * other ending goes straight to [FINISHED].
+     *
+     * A separate status rather than a flag on [FINISHED], because the difference is whether the
+     * match has been paid — and a status that sometimes means paid and sometimes does not is the
+     * one thing standing between a settlement and crediting it twice.
+     */
+    AWAITING_CLAIM,
+
+    /** Nine cards placed, a sudden-death rematch decided it, and both sides have been paid. */
     FINISHED,
 
     /** One side ran out of time to come back. See [PvpOutcome.forfeitedBy]. */
     FORFEITED,
 
-    /** Never began: the invitation lapsed, or the queue was left. Nothing is credited. */
+    /** Never began: the invitation lapsed, or the table was withdrawn. Nothing is credited. */
     ABANDONED,
 }
 
 /**
  * How a finished match ended, from the reader's own side.
+ *
+ * ### [blue] and [red] are the server's colours
+ *
+ * As is [forfeitedBy]. A client is free to draw a match from its own side — and this app's does,
+ * mirroring a red player's board so they see themselves in blue like everybody else — but nothing
+ * here is mirrored with it. A screen comparing [forfeitedBy] against a mirrored view's side would
+ * tell half of all players the opposite of what happened, so the comparison must be made against
+ * the side the server dealt. For a score to *show*, prefer `MatchView.score`, which is already
+ * told from the reader's side.
  *
  * @property result this side's result. A sudden-death draw is not one — the rematch decides it —
  *   which is why `MatchResult.of` returns null there and why this field carries the *settled*
@@ -189,8 +218,21 @@ enum class PvpMatchStatus {
  * @property forfeitedBy who walked away, or null if the match was played out. Named rather than
  *   implied by the result, because "you won" and "you won because they left" are not the same
  *   sentence to show a player.
- * @property cardWon the card taken from the loser, when the match was played for one.
- * @property cardLost the card given up. Exactly one of the two is set on each side.
+ * @property stakeMgp what the wager moved, signed from this side: positive won, negative paid. Kept
+ *   apart from [mgp] — which is the flat payout every match earns — so a screen can say "100 MGP,
+ *   and 50 more off them" rather than one number that hides the bet.
+ * @property cardsWon the ids taken from the other side. Plural because [TradeRule.DIFF] and
+ *   [TradeRule.ALL] take several, and because [TradeRule.DIRECT] can hand cards to **both** sides.
+ * @property cardsLost the ids given up. Not the mirror of [cardsWon] under Direct, where each side
+ *   may have a non-empty list of both.
+ * @property picksOwed how many of the other side's cards this reader still has to name. Non-zero
+ *   only while the status is [PvpMatchStatus.AWAITING_CLAIM], and only for the winner.
+ * @property pickFrom what there is to choose from — the loser's dealt hand. **Sent to the winner
+ *   only, and only while [picksOwed] is non-zero**: it is the one place this protocol puts a hand
+ *   on the wire that it otherwise hides, and it is on the wire because you cannot choose from cards
+ *   you have not been shown.
+ * @property claimDeadline epoch millis by which the choice must be made, after which the server
+ *   makes it. Sent as an instant for the reason [PvpMatchView.deadline] is.
  */
 @Serializable
 data class PvpOutcome(
@@ -200,42 +242,55 @@ data class PvpOutcome(
     val forfeitedBy: CardColor? = null,
     val mgp: Int = 0,
     val xp: Int = 0,
-    val cardWon: Int? = null,
-    val cardLost: Int? = null,
+    val stakeMgp: Int = 0,
+    val cardsWon: List<Int> = emptyList(),
+    val cardsLost: List<Int> = emptyList(),
+    val picksOwed: Int = 0,
+    val pickFrom: List<Int> = emptyList(),
+    val claimDeadline: Long? = null,
 )
 
 /**
- * What is being played for.
+ * What is being played for: some MGP, some cards, or neither.
  *
- * ### Why a card wager is a sealed pair and not a nullable id
+ * ### Why the card half is a rule and not a pair of ids
  *
- * [Card] is the classic Triple Triad stake and the reason the game has any tension; MGP alone makes
- * a loss free. But a card is a *possession*, and losing one is the only irreversible thing this
- * game can do to a player. So the two are distinct types rather than a nullable field: every place
- * that credits a match has to say which of the two it is handling, and a `when` that forgets one is
- * a compile error rather than a silently unwagered match.
+ * This was two named cards — one from each side, agreed before the match — and the argument for it
+ * was that a wager should be evaluable: you can see what you are risking *and* what you stand to
+ * win before you accept. That is true, and it is not how Triple Triad has ever worked.
  *
- * The challenger proposes and the other side accepts — see [PvpChallenge]. There is no
- * counter-offer: two rounds of negotiation is a chat feature, and this is a card game.
+ * What the original does is put the whole hand at risk and settle it afterwards by a **rule**: the
+ * winner takes one of the five, or as many as the margin, or all of them, or each side simply keeps
+ * what it captured. Naming a card up front cannot express any of those, and the interesting half of
+ * the wager — *which* card — is the decision it takes away.
+ *
+ * So the stake is a [TradeRule] and a number of MGP, and both may be nothing. The safety the sealed
+ * pair bought is not lost: [TradeRule] is an enum, so a settlement `when` that forgets one is still
+ * a compile error, and there is now only one place that has to exhaust it instead of two.
+ *
+ * A stake is proposed by whoever opens the table or sends the invitation, and accepted by joining
+ * it. There is no counter-offer: two rounds of negotiation is a chat feature, and this is a card
+ * game.
+ *
+ * @property mgp what each side puts up. The winner takes it; a draw returns it. Checked against
+ *   both purses **before** the match, because there is no escrow — see `MatchRewards.creditPvp`.
+ * @property trade how cards change hands, if they do.
  */
 @Serializable
-sealed interface PvpStake {
-    /** MGP only, as a PvE match pays. The default, and what the quick queue always plays for. */
-    @Serializable
-    data object None : PvpStake
+data class PvpStake(
+    val mgp: Int = 0,
+    val trade: TradeRule = TradeRule.NONE,
+) {
+    /** Nothing at stake but the flat payout every match pays. */
+    val isFree: Boolean get() = mgp == 0 && trade == TradeRule.NONE
 
-    /**
-     * Each side puts up one card; the winner takes the loser's.
-     *
-     * Both ids are named up front so each player sees what they are risking *and* what they stand
-     * to win before agreeing. A stake naming only the challenger's card would be an offer the other
-     * side cannot evaluate.
-     */
-    @Serializable
-    data class Cards(val challengerCard: Int, val opponentCard: Int) : PvpStake
+    companion object {
+        /** The stake that risks nothing. What an unstated wager means. */
+        val None: PvpStake = PvpStake()
+    }
 }
 
-/** A player waiting to be paired, or being told they now are. */
+/** A player being told a match is now open for them, and which one. */
 @Serializable
 data class PvpQueueState(
     val waiting: Boolean,
@@ -255,10 +310,22 @@ data class PvpChallenge(
     val id: String,
     val fromName: String,
     val toName: String,
-    val stake: PvpStake = PvpStake.None,
     val expiresAt: Long,
+    /**
+     * What is being proposed — the same four things a table states.
+     *
+     * An invitation used to carry a wager and nothing else, so a directed match always played the
+     * default format under whatever the roulette drew. That made the two ways into a match
+     * unequal for no reason a player could see: you could name your terms to strangers and not to
+     * a friend. [PvpTableRequest] is reused rather than restated so the two paths cannot drift —
+     * and so the server validates both through one function.
+     */
+    val terms: PvpTableRequest = PvpTableRequest(formatId = ""),
     val matchId: String? = null,
-)
+) {
+    /** What the match will be played for. */
+    val stake: PvpStake get() = terms.stake
+}
 
 /** One placement, as a client asks for it. */
 @Serializable
