@@ -177,6 +177,28 @@ object PveMatches {
         profile.decks.firstOrNull { it.isComplete }?.cards
             ?: profile.ownedCardIds().take(HAND_SIZE)
 
+    /**
+     * The five cards a **named** deck slot plays, falling back to [playerDeck] when it cannot.
+     *
+     * A fallback and not a refusal, deliberately. The caller here is the referee dealing a
+     * player-versus-player match, and the slot was chosen when the table was opened — which may
+     * have been minutes before anybody joined it. In between, the host is free to walk into the
+     * deck editor and pull a card out of the very deck they were bringing. Refusing at that point
+     * fails the *joiner's* request for something the host did, and leaves a lobby where tapping
+     * Join sometimes does nothing.
+     *
+     * So an unusable choice quietly becomes no choice, which is the state the player was in before
+     * they made one. The moment to tell somebody their deck is incomplete is in the deck editor,
+     * and that is where it is told.
+     *
+     * @param deck a slot in [GameSave.decks]. Any index outside it — the protocol's `ANY_DECK`
+     *   among them — means nothing was chosen and leaves it to [playerDeck]. Named that way
+     *   rather than by importing the constant: `protocol` already depends on this package, and
+     *   a link back would close the circle for the sake of one KDoc reference.
+     */
+    fun playerDeck(profile: GameSave, deck: Int): List<Int> =
+        profile.decks.getOrNull(deck)?.takeIf { it.isComplete }?.cards ?: playerDeck(profile)
+
     private fun resolve(ids: List<Int>, cards: Map<Int, Card>, what: String): List<Card> {
         val resolved = ids.mapNotNull { cards[it] }
         require(resolved.size == HAND_SIZE) {

@@ -10,6 +10,7 @@ import com.tripletriad.model.Npc
 import com.tripletriad.model.OpenRule
 import com.tripletriad.model.OrderRule
 import com.tripletriad.model.TypeRule
+import com.tripletriad.protocol.ANY_DECK
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -182,6 +183,36 @@ class PveMatchTest {
         assertTrue(PveMatches.playableDecks(save, catalog, TestFormats.ff14).isEmpty())
         // …and still has something to play, which is what the fallback is for.
         assertEquals(HAND_SIZE, PveMatches.playerDeck(save).size)
+    }
+
+    /** A named slot is played, which is how a refereed match honours a choice made in a lobby. */
+    @Test
+    fun theDeckNamedIsTheDeckPlayed() {
+        val second = (6..10).map(::ff14)
+        val save = profile(
+            cards = (1..12).associate { ff14(it) to 1 },
+            decks = listOf(Deck("First", (1..5).map(::ff14)), Deck("Second", second)),
+        )
+
+        assertEquals(second, PveMatches.playerDeck(save, deck = 1))
+    }
+
+    /**
+     * A slot that has stopped being playable falls back rather than refusing.
+     *
+     * The case is a host who opened a table naming a deck and then edited a card out of it before
+     * anybody joined. Refusing there would fail the *joiner's* tap for something the host did.
+     */
+    @Test
+    fun aDeckThatIsNoLongerCompleteFallsBackToWhatCanBePlayed() {
+        val save = profile(
+            cards = (1..12).associate { ff14(it) to 1 },
+            decks = listOf(Deck("Full", (1..5).map(::ff14)), Deck("Gutted", listOf(ff14(6)))),
+        )
+
+        assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = 1))
+        assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = ANY_DECK))
+        assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = 99))
     }
 
     /** The complete deck is played, not the first five cards owned. */

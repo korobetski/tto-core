@@ -193,6 +193,33 @@ class MatchViewTest {
         assertTrue(view.playablePositions().isEmpty())
     }
 
+    /**
+     * A view reaches the same verdict the state does, from either side of it.
+     *
+     * The claim that matters is the second assertion: **red**, who can see none of blue's cards,
+     * still says blue won. It works because a hand's *length* is public even when its contents are
+     * not, and the score counts unplayed cards from the lengths.
+     */
+    @Test
+    fun bothSidesReadTheSameOutcomeOffTheirOwnView() {
+        var state = match()
+        while (!state.isFinished) {
+            state = state.play(state.currentHand.first(), state.playablePositions().first())
+        }
+
+        val blue = MatchView.of(state, CardColor.BLUE, HandVisibility.HIDDEN)
+        val red = MatchView.of(state, CardColor.RED, HandVisibility.HIDDEN)
+
+        assertEquals(state.outcome(), blue.outcome())
+        assertEquals(state.outcome(), red.outcome())
+    }
+
+    /** A match still being played has no verdict to report, which is not the same as a draw. */
+    @Test
+    fun aLiveViewHasNoOutcome() {
+        assertNull(MatchView.of(match(), CardColor.BLUE, HandVisibility.HIDDEN).outcome())
+    }
+
     /** The last play is public — it is on the board — and carries who did what. */
     @Test
     fun theLastPlayIsShownToBothSides() {

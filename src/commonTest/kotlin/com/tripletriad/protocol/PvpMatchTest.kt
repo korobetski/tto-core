@@ -1,5 +1,6 @@
 package com.tripletriad.protocol
 
+import com.tripletriad.model.Capture
 import com.tripletriad.model.Card
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.GameRules
@@ -253,6 +254,76 @@ class PvpMatchTest {
         val view = wire(open, visibility = HandVisibility(red.indices.toSet()))
 
         assertContentEquals(red.map { it.id }, view.opponentHand)
+    }
+
+    /**
+     * A capture survives the round trip with its kind and its wave — the point of sending it.
+     *
+     * The board alone would say the card at that position changed hands. Only [Capture.kind]
+     * says it was a Combo, and a Combo is a caption the player is owed.
+     */
+    @Test
+    fun whatTheLastMoveFlippedTravelsWithIt() {
+        val played = state.hands.getValue(CardColor.BLUE).first()
+        val after = state.play(played, position = 4)
+        val rebuilt = wire(after).toMatchView(catalogue)
+
+        val original = assertNotNull(after.lastPlay)
+        val arrived = assertNotNull(rebuilt?.lastPlay)
+        assertEquals(original.player, arrived.player)
+        assertEquals(original.card.id, arrived.card.id)
+        assertEquals(original.position, arrived.position)
+        assertEquals(original.captures, arrived.captures)
+        assertEquals(original.handIndex, arrived.handIndex)
+    }
+
+    /** A board nothing has been played on says so, rather than inventing one to announce. */
+    @Test
+    fun anUntouchedBoardHasNoLastPlay() {
+        assertNull(wire().lastPlay)
+        assertNull(wire().toMatchView(catalogue)?.lastPlay)
+    }
+
+    /**
+     * The placed card arrives stamped with whoever played it, not with the catalogue's default.
+     *
+     * The same claim the hands make, for the same reason: `CardFace` fills from `Card.owner`, and a
+     * catalogue card carries BLUE whether or not blue played it.
+     */
+    @Test
+    fun theCardJustPlayedIsStampedWithWhoPlayedIt() {
+        val opening = state.play(state.hands.getValue(CardColor.BLUE).first(), position = 0)
+        val reply = opening.play(opening.hands.getValue(CardColor.RED).first(), position = 8)
+
+        // Read as blue, deliberately: the last play is the same fact for both sides, and the card
+        // it names belongs to whoever played it rather than to whoever is looking.
+        val arrived = assertNotNull(wire(reply).toMatchView(catalogue)?.lastPlay)
+        assertEquals(CardColor.RED, arrived.player)
+        assertEquals(CardColor.RED, arrived.card.owner)
+    }
+
+    /** A view whose last play names an unknown card is refused whole, as an unknown cell is. */
+    @Test
+    fun aLastPlayNamingAnUnknownCardIsRefused() {
+        val after = state.play(state.hands.getValue(CardColor.BLUE).first(), position = 4)
+        val played = assertNotNull(after.lastPlay).card.id
+
+        assertNull(wire(after).toMatchView(catalogue - played))
+    }
+
+    /** Nothing chosen is not slot zero: the two are different requests and must encode apart. */
+    @Test
+    fun anUnchosenDeckIsNotTheFirstDeck() {
+        assertEquals(ANY_DECK, PvpTableRequest(formatId = "ff14-standard").deck)
+        assertEquals(ANY_DECK, PvpJoinRequest().deck)
+        assertTrue(ANY_DECK !in 0..4)
+    }
+
+    /** Joining says only which deck, and may say nothing at all — an older client says nothing. */
+    @Test
+    fun joiningWithNoDeckDecodesFromAnEmptyObject() {
+        assertEquals(PvpJoinRequest(), json.decodeFromString(PvpJoinRequest.serializer(), "{}"))
+        assertEquals(2, json.decodeFromString(PvpJoinRequest.serializer(), """{"deck":2}""").deck)
     }
 
     private companion object {

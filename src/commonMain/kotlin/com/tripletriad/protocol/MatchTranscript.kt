@@ -26,9 +26,7 @@ import kotlinx.serialization.Serializable
  *
  * - **A signature.** Without one, anybody can submit a transcript in anybody's name. The transcript
  *   is still unforgeable as a *game*, but not as a *claim*. Signing comes with accounts and keys.
- * - **A server-issued seed.** [seed] is chosen by the client today, so a player can replay locally
- *   until the deal is favourable and submit that one. The design calls this seed grinding and
- *   judges the gain small; the fix is for the server to issue the seed at match start.
+ * - **A signature**, still. See above.
  * - **The profile.** [ownedCards] is stated by the client, which is exactly backwards — the server
  *   holds the profile, and asking the claimant what they own is asking the question of the one
  *   party with a reason to lie. It is here only until accounts exist, and the field carries its own
@@ -153,6 +151,30 @@ enum class RejectionReason {
 
     /** Moves were left over once the board was full. */
     TRAILING_MOVES,
+
+    /**
+     * The seed was never issued to this account, or has already been used.
+     *
+     * ### What this closes
+     *
+     * [MatchTranscript.seed] is the whole of a match's randomness, so a client that chooses it
+     * chooses the deal: play the match locally, look at the opponent's hand, and if it is a bad
+     * one pick another seed and start again. Nothing about the transcript that finally arrives is
+     * detectably wrong — it is a real match, honestly played, from a deal the player auditioned.
+     * The design used to name this "seed grinding" and judge the gain small. It is not small: it
+     * is unbounded and free.
+     *
+     * A seed the server issued cannot be auditioned, because there is nothing to choose between.
+     *
+     * ### What it does not close
+     *
+     * **Which opponent a ticket is spent on.** A player holding the next seed can compute the deal
+     * against each opponent and pick the most favourable. That is bounded — one match per ticket
+     * either way — where re-rolling was not, and closing it entirely would mean naming the
+     * opponent before the seed is issued, which is a round trip per match and the end of offline
+     * play. See `SeedTickets`.
+     */
+    UNKNOWN_SEED,
 }
 
 /**

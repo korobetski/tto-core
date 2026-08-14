@@ -501,17 +501,67 @@ data class GameSave(
      * This profile with every **server-owned** field taken from [stored] instead of from here.
      *
      * The list of such fields, stated once. A profile arriving from a client is taken at its word
-     * for everything else — the shop, the deck editor, the avatar — because those are things the
-     * player really did decide, and a server that recomputed them would be a server that has to
-     * model every screen. What it must not take on trust is anything a *match* established, and a
-     * completed quest is exactly that: the reward is paid on the strength of matches the server
-     * itself replayed.
+     * for everything else, because those are things the player really did decide and a server that
+     * recomputed them would be a server that has to model every screen. What it must not take on
+     * trust is anything a *match* established, and each field below is exactly that.
      *
-     * `achievements` belongs on this list too and is deliberately not on it yet: adding it changes
-     * the behaviour of an endpoint that has always accepted them, which is a separate decision.
-     * This function is where it goes when that decision is taken.
+     * ### This list only grows
+     *
+     * It is the ratchet by which the client stops being believed. Each entry moved here is a way of
+     * forging progression closed for good, and the intended end state is that a profile arriving
+     * from a client carries **nothing monnayable** — see the plan's § 1.1. Nothing is ever removed
+     * from this list; a field that turns out to belong to the client was put here by mistake.
+     *
+     * - **`quests`** — a daily quest pays on the strength of matches the server replayed, so a
+     *   client asserting one would be paying itself.
+     * - **`achievements`** — awarded by `AchievementRepository.credit`, which only ever runs inside
+     *   `MatchRewards.credit` and `creditPvp`. The client reads them and never writes one.
+     * - **`stats`** — wins, defeats and draws. Written by the same two functions, off the server's
+     *   own replay of the score. Note this is not `startedMatches`/`endedMatches`, which the client
+     *   does move when a match begins and is abandoned, and which stay believed.
+     * - **`mgp`** — the purse. Every way it moves is now an intent the server carries out: the
+     *   shop, the resale counter, a ladder's entry fee, a match's payout.
+     * - **`bag`** and **`boons`** — filled by buying, emptied by using, selling and discarding, all
+     *   of which are intents.
+     * - **`xp`, `pvpXp`, `level`, `rank`** — written only by `MatchRewards`, off a replay. `level`
+     *   and `rank` are pure functions of the XP fields anyway, so believing them separately was
+     *   always a way for two numbers to disagree.
+     *
+     * - **`cards`** — the collection, and the most valuable forgery there was. It closed last,
+     *   because it was the one field with a legitimate client-side writer left: `StarterPack`
+     *   repairs a profile that has sold everything and can no longer field a deck, and it lived in
+     *   the client module where no server could run it. Taking `cards` before moving it would have
+     *   made that repair silently do nothing — a worse failure than the forgery, and the reason the
+     *   order mattered.
+     *
+     * ### What stays believed, and always will
+     *
+     * **`decks`** — arranging five cards you already own is the player's to decide, and a deck
+     * naming cards they do not hold is refused where it matters: `Deck.isAffordable`, at the point
+     * a match is dealt. **`avatarId`** and the rest of the presentation likewise. The test is not
+     * "could a client change this" but "is it worth anything to anybody else".
+     *
+     * **`startedMatches`/`endedMatches`** — the client moves these when a match begins and when it
+     * is abandoned, and only the client knows. Their difference is the forfeit count, which costs
+     * nothing to overstate.
+     *
+     * Applied silently rather than as a refusal: an honest client sends the whole profile back
+     * including the fields it was last told about, so rejecting the request would break the
+     * ordinary case to punish nobody.
      */
-    fun withServerOwnedFrom(stored: GameSave): GameSave = copy(quests = stored.quests)
+    fun withServerOwnedFrom(stored: GameSave): GameSave = copy(
+        quests = stored.quests,
+        achievements = stored.achievements,
+        stats = stored.stats,
+        mgp = stored.mgp,
+        bag = stored.bag,
+        boons = stored.boons,
+        xp = stored.xp,
+        pvpXp = stored.pvpXp,
+        level = stored.level,
+        rank = stored.rank,
+        cards = stored.cards,
+    )
 
     companion object {
         /** `Save.as:27`. A moogle name, and the original's default. */

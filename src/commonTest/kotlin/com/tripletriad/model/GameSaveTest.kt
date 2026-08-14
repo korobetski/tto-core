@@ -423,4 +423,86 @@ class GameSaveTest {
         assertTrue(Deck("a", listOf(7)).isAffordable(owned))
         assertTrue(Deck("b", listOf(7)).isAffordable(owned))
     }
+
+    /**
+     * Every server-owned field comes off the stored document, and nothing else does.
+     *
+     * Both halves matter and the second is the one that catches an over-eager fix: a
+     * `withServerOwnedFrom` that returned `stored` outright would satisfy every assertion about
+     * forgery and silently discard the shop, the deck editor and the avatar — which is the whole
+     * reason the endpoint exists.
+     */
+    @Test
+    fun theServerOwnedFieldsAreTakenBackAndTheRestIsBelieved() {
+        val stored = GameSave.new("Kuplu", createdAt = 0L).copy(
+            quests = DailyQuests(day = "2026-08-14", questIds = listOf("q-win-3")),
+            achievements = mapOf("earned-honestly" to 1L),
+            stats = Stats(wins = 3, defeats = 1, draws = 0),
+            mgp = 120,
+            xp = 500,
+        )
+        val claimed = stored.copy(
+            quests = DailyQuests(day = "2026-08-14", completed = mapOf("q-win-3" to 1L)),
+            achievements = mapOf("earned-honestly" to 1L, "forged" to 2L),
+            stats = Stats(wins = 999),
+            mgp = 999_999,
+            xp = 9_000_000,
+            boons = Boons(mgp = 50),
+            avatarId = "ffxiv_twi03007",
+            decks = listOf(Deck("Rearranged", listOf(1, 2, 3, 4, 5))),
+        )
+
+        val settled = claimed.withServerOwnedFrom(stored)
+
+        assertEquals(stored.quests, settled.quests)
+        assertEquals(stored.achievements, settled.achievements)
+        assertEquals(stored.stats, settled.stats)
+        assertEquals(stored.mgp, settled.mgp, "a client set its own purse")
+        assertEquals(stored.xp, settled.xp, "a client set its own experience")
+        assertEquals(stored.boons, settled.boons, "a client granted itself boons")
+
+        // The other half, and the one an over-eager fix breaks: these are the player's to decide.
+        assertEquals("ffxiv_twi03007", settled.avatarId, "the avatar is the player's to choose")
+        assertEquals(claimed.decks, settled.decks, "arranging owned cards is the player's to do")
+    }
+
+    /**
+     * The collection is the server's, which was the last and most valuable field to close.
+     *
+     * It closed last because `StarterPack` — the one legitimate client-side writer — had to move
+     * into `:core` first, so that a server could perform the repair it does. Taking the field
+     * before moving the code would have made that repair silently do nothing.
+     */
+    @Test
+    fun theCollectionIsTakenBack() {
+        val stored = GameSave.new("Kuplu", createdAt = 0L)
+        val claimed = stored.copy(cards = stored.cards + (999 to 3))
+
+        assertEquals(stored.cards, claimed.withServerOwnedFrom(stored).cards)
+    }
+
+    /**
+     * The list only ever grows, asserted rather than left to a comment.
+     *
+     * This is a **reminder in the shape of a test**: it names the fields protected today, so that
+     * removing one is a failure with a sentence attached rather than a silent regression in an
+     * endpoint nobody re-reads. Adding a field means adding a line here, which is the point.
+     */
+    @Test
+    fun theServerOwnedListDoesNotShrink() {
+        val stored = GameSave.new("Kuplu", createdAt = 0L).copy(
+            quests = DailyQuests(day = "d", questIds = listOf("q")),
+            achievements = mapOf("a" to 1L),
+            stats = Stats(wins = 1),
+        )
+        val blank = GameSave.new("Kuplu", createdAt = 0L)
+
+        val settled = blank.withServerOwnedFrom(stored)
+
+        // A client that sends *defaults* for these must still get the stored values back. Sending
+        // nothing is how `encodeDefaults = false` makes a forgery look like an honest omission.
+        assertEquals(stored.quests, settled.quests, "quests are no longer server-owned")
+        assertEquals(stored.achievements, settled.achievements, "achievements are no longer owned")
+        assertEquals(stored.stats, settled.stats, "stats are no longer server-owned")
+    }
 }

@@ -145,8 +145,59 @@ data class AppVersion(
  * `MatchTranscript` is untouched, so `fingerprint` is untouched and every transcript credited under
  * 1.x still hashes the same. [TRANSCRIPT_VERSION] therefore does not move and the goldens pass
  * unchanged — the outcome the rewritten paragraph above now allows for.
+ *
+ * ### 2.1.0 — captures on the wire, and a chosen deck
+ *
+ * Two additions, both of which a 2.0.0 peer survives untouched, which is the whole test:
+ *
+ * - `PvpMatchView.lastPlay` — nullable with a default. An old client drops it under
+ *   `ignoreUnknownKeys` and announces nothing after a placement, which is what it does today; an
+ *   old *server* omits it and a new client sees null, which is a board it treats as un-played-on.
+ *   Neither is wrong, both are quiet.
+ * - `PvpTableRequest.deck`, and `PvpJoinRequest` as the body of joining. Every field defaults, and
+ *   the join body is optional server-side **for this reason**: an old client posts nothing and is
+ *   dealt its first complete deck, exactly as before it could ask.
+ *
+ * Note what a minor is *not* being claimed for. `Capture` and `CaptureKind` became `@Serializable`,
+ * which changes no existing payload — nothing serialized them before — and the engine's answers are
+ * bit-identical. `MatchTranscript` is untouched again, so [TRANSCRIPT_VERSION] holds and the
+ * goldens pass unchanged.
+ *
+ * ### 2.2.0 — the first intent endpoint, and throttling
+ *
+ * `POST /me/bag/use` moves the booster roll to the server. A **new endpoint** rather than a changed
+ * one, so no existing payload changes shape and a 2.1.0 peer is untouched in both directions: an
+ * old client keeps rolling locally against a new server, and a new client against an old server
+ * gets a 404 from a call it only makes when the player opens a bag item.
+ *
+ * That second case is the one to be clear about, because it is the standing deployment rule rather
+ * than something this number enforces: **the server goes first**. The version gate is major-only by
+ * design, so a minor cannot and should not refuse anybody — it records that the surface grew.
+ *
+ * Also here, and equally invisible to a peer that ignores it: `429` is now an answer the server can
+ * give to any endpoint, carrying `Retry-After` and no body. A client that does not know it reads it
+ * as an ordinary failure, which is wrong but not broken; `AccountResult.Throttled` is what reads it
+ * as the wait it is.
+ *
+ * `GameSave.withServerOwnedFrom` also widened — achievements and stats now come off the stored
+ * document. That changes no *shape*: the fields have always been on the wire, and what changed is
+ * which side is believed about them. A 2.1.0 client sending its own is silently corrected, which is
+ * exactly what it already experienced for quests.
+ *
+ * ### Why the rest of that work is also 2.2.0, and not 2.3.0
+ *
+ * Everything that followed — the remaining intent endpoints, `GET /matches/tickets`, seeds a client
+ * may no longer choose, `DELETE /accounts/me`, and the whole of `withServerOwnedFrom` down to
+ * `cards` — is folded into this number rather than given its own.
+ *
+ * Because **2.2.0 has never shipped**. A version is a promise to peers about what they will find,
+ * and there are no peers on this one: nothing was published, nothing deployed, no client built
+ * against it. Minting 2.3.0 would record a distinction between two states of the world that only
+ * ever existed on one machine, and would leave a number in this file that no running thing ever
+ * reported. The contents of an unreleased version are still open; the moment it is tagged, they are
+ * not.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(2, 0, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(2, 2, 0)
 
 /**
  * The header both sides put the version in.

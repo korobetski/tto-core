@@ -1,6 +1,9 @@
 package com.tripletriad.model
 
+import kotlinx.serialization.Serializable
+
 /** Why a card was flipped. Drives which animation plays, and combo propagation. */
+@Serializable
 enum class CaptureKind {
     /** Won on raw power. `type:'ZZ'` in the AS3 result objects. */
     BASIC,
@@ -88,7 +91,14 @@ data class RulesEngineOptions(
     }
 }
 
-/** One flipped card. [wave] is 0 for the direct captures, 1+ for combo generations. */
+/**
+ * One flipped card. [wave] is 0 for the direct captures, 1+ for combo generations.
+ *
+ * Serializable because a refereed match has to *report* its captures: the client that did not make
+ * the move has no engine run of its own to read them off, and "which cards flipped, and why" is
+ * what the Same, Plus and Combo captions announce. See `PvpPlay`.
+ */
+@Serializable
 data class Capture(val position: Int, val kind: CaptureKind, val wave: Int)
 
 /** The outcome of one placement: the resulting board and every card it flipped. */

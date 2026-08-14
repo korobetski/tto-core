@@ -99,6 +99,28 @@ data class MatchView(
             mapOf(side to ownHand.size, opponent to opponentHand.size),
         )
 
+    /**
+     * How this ended, or null while it is still being played — [MatchState.outcome] from a view.
+     *
+     * The same three answers computed the same way, and it can be: [score] counts unplayed cards
+     * for their owner from the two hand *lengths*, which a view keeps even when it may not see what
+     * is in the other one. So a side that cannot name a single opponent card can still say who won.
+     *
+     * It exists because a refereed client has no [MatchState] to ask. On this side of the wire the
+     * match is a sequence of views, and "the board is full and blue took it" is something the
+     * screen has to know in order to announce it.
+     */
+    fun outcome(): MatchOutcome? {
+        if (!isFinished) return null
+        val final = score
+        val winner = final.winner()
+        return when {
+            winner != null -> MatchOutcome.Win(winner, final)
+            rules.suddenDeath -> MatchOutcome.SuddenDeath(final)
+            else -> MatchOutcome.Draw(final)
+        }
+    }
+
     /** Where a card may go. Empty when it is not this side's turn, as [playableHandIndices] is. */
     fun playablePositions(): List<Int> =
         if (isMyTurn) board.emptyPositions() else emptyList()

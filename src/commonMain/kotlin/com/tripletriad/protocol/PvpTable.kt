@@ -46,14 +46,41 @@ data class PvpTable(
     val matchId: String? = null,
 )
 
-/** What a client sends to open one. The host is whoever the token says. */
+/**
+ * No deck named: the server plays the profile's first complete one, as it always did.
+ *
+ * The default rather than `0`, because slot 0 and "whatever you think best" are different requests
+ * and a client that has not asked must not be read as having asked for the first slot.
+ */
+const val ANY_DECK: Int = -1
+
+/**
+ * What a client sends to open one. The host is whoever the token says.
+ *
+ * @property deck which of the host's five deck slots they are bringing, or [ANY_DECK]. Sent with
+ *   the terms but **not one of them**: [PvpTable] does not carry it, so what is advertised is the
+ *   match on offer and not the hand behind it. A slot index would tell an opponent nothing anyway —
+ *   decks are local to a save — but the offer is a public document and this is a private choice,
+ *   and the two are worth keeping apart.
+ */
 @Serializable
 data class PvpTableRequest(
     val formatId: String,
     val rules: GameRules = GameRules(),
     val roulette: Boolean = false,
     val stake: PvpStake = PvpStake.None,
+    val deck: Int = ANY_DECK,
 )
+
+/**
+ * What the *other* player sends: joining a table, or accepting an invitation.
+ *
+ * Only the deck, because the terms were the host's to state and agreeing to them is the whole
+ * content of joining. Every field defaults, so the body may be omitted entirely — which is what a
+ * client built before decks could be chosen sends, and it lands on exactly the behaviour it had.
+ */
+@Serializable
+data class PvpJoinRequest(val deck: Int = ANY_DECK)
 
 /**
  * The cards a winner names, under [com.tripletriad.model.TradeRule.ONE] or `DIFF`.

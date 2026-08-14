@@ -2,6 +2,7 @@ package com.tripletriad.protocol
 
 import com.tripletriad.model.AscensionTally
 import com.tripletriad.model.Board
+import com.tripletriad.model.Capture
 import com.tripletriad.model.Card
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.CardType
@@ -9,6 +10,7 @@ import com.tripletriad.model.GameRules
 import com.tripletriad.model.MatchResult
 import com.tripletriad.model.MatchView
 import com.tripletriad.model.PlacedCard
+import com.tripletriad.model.PlayResult
 import com.tripletriad.model.TradeRule
 import com.tripletriad.model.TurnOrder
 import kotlinx.serialization.Serializable
@@ -48,6 +50,39 @@ import kotlinx.serialization.Serializable
 data class PvpCell(val cardId: Int, val owner: CardColor)
 
 /**
+ * The placement that just happened, as [PlayResult] travels.
+ *
+ * ### Why the captures have to be sent rather than recomputed
+ *
+ * A PvE client runs the engine, so it learns what a move flipped as a side effect of making it.
+ * A refereed client never runs the engine at all — and the side that did *not* move has no move to
+ * run. Recomputing from the two boards would recover *which* cards changed hands but not
+ * [Capture.kind] or [Capture.wave], and those are the whole content of the Same, Plus and Combo
+ * announcements: a flip is a flip on the board, and only the resolution knows it was a combo.
+ *
+ * So the engine's own answer is what travels. This is the one place the protocol carries something
+ * derived rather than something stated, and it earns it: the derivation is not reversible.
+ *
+ * ### What it is not
+ *
+ * Not a move log. One placement, the most recent, exactly as [PvpMatchView] is one position rather
+ * than a history — a client animating the last move is all this is for. The move *history* lives on
+ * the server as the match's inputs and is what makes a settlement auditable; this is presentation.
+ *
+ * @property cardId the card placed, by id, as everything else on this wire is.
+ * @property handIndex which slot it came out of. Not a leak: the card is face up on the board now,
+ *   and the slot is what `HandVisibility.afterPlaying` needs to keep an Open hand lined up.
+ */
+@Serializable
+data class PvpPlay(
+    val player: CardColor,
+    val cardId: Int,
+    val position: Int,
+    val captures: List<Capture> = emptyList(),
+    val handIndex: Int = 0,
+)
+
+/**
  * One side's view of a live match, as it travels.
  *
  * The wire form of [MatchView], and deliberately not [MatchView] itself: that type holds real
@@ -67,6 +102,9 @@ data class PvpCell(val cardId: Int, val owner: CardColor)
  * @property deadline epoch millis by which this side must move, or null when it is not their turn.
  *   Sent rather than a remaining duration because a client's clock offset is a fixed error on an
  *   instant and a compounding one on a countdown restarted at every poll.
+ * @property lastPlay the placement that produced this position, or null on a board nothing has been
+ *   played on. Sent to **both** sides and identical for both: what a move flipped is public the
+ *   moment it flips. See [PvpPlay] for why it cannot be recomputed from the boards.
  */
 @Serializable
 data class PvpMatchView(
@@ -87,6 +125,7 @@ data class PvpMatchView(
     val status: PvpMatchStatus = PvpMatchStatus.PLAYING,
     val stake: PvpStake = PvpStake.None,
     val outcome: PvpOutcome? = null,
+    val lastPlay: PvpPlay? = null,
 ) {
     /**
      * This view as the model type the screen renders, resolving ids through [cards].
@@ -98,7 +137,8 @@ data class PvpMatchView(
     fun toMatchView(cards: Map<Int, Card>): MatchView? {
         // Every id is checked before any is used, so the refusal is one decision taken once
         // rather than three `?: return null`s that each mean the same thing in a different place.
-        val named = hand + opponentHand.filterNotNull() + cells.mapNotNull { it?.cardId }
+        val named = hand + opponentHand.filterNotNull() + cells.mapNotNull { it?.cardId } +
+            listOfNotNull(lastPlay?.cardId)
         if (named.any { it !in cards }) return null
 
         // Stamped, not taken as they come. A catalogue card carries `owner = BLUE` as a default
@@ -125,6 +165,18 @@ data class PvpMatchView(
             order = TurnOrder(first),
             placement = placement,
             tally = AscensionTally(ascension),
+            // Stamped with whoever played it, for the reason the hands above are: a catalogue card
+            // carries `owner = BLUE` as a default, and `MatchState` stamps every hand with the side
+            // holding it — so this is the card as it left that hand.
+            lastPlay = lastPlay?.let { play ->
+                PlayResult(
+                    player = play.player,
+                    card = cards.getValue(play.cardId).copy(owner = play.player),
+                    position = play.position,
+                    captures = play.captures,
+                    handIndex = play.handIndex,
+                )
+            },
             playableHandIndices = playable,
         )
     }
@@ -161,6 +213,15 @@ data class PvpMatchView(
             status = status,
             stake = stake,
             outcome = outcome,
+            lastPlay = view.lastPlay?.let { play ->
+                PvpPlay(
+                    player = play.player,
+                    cardId = play.card.id,
+                    position = play.position,
+                    captures = play.captures,
+                    handIndex = play.handIndex,
+                )
+            },
         )
     }
 }
