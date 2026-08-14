@@ -94,6 +94,11 @@ class MatchAi(private val options: MatchAiOptions = MatchAiOptions()) {
      *
      * So cover measures only the *open* flanks, and a placement walled in on three sides scores
      * high whatever it holds.
+     *
+     * The tally counts this card, because the question is how exposed it would be **once played**
+     * — the same reason `RulesEngine.resolve` counts it, and the same call. An AI scoring its
+     * candidates against a tally the board will never be in would systematically undervalue
+     * playing into its own type under Bonus, which is the move that rule exists to reward.
      */
     fun cover(state: MatchState, card: Card, position: Int): Int = Side.entries.sumOf { side ->
         val neighbour = state.board.neighbour(position, side)
@@ -105,7 +110,7 @@ class MatchAi(private val options: MatchAiOptions = MatchAiOptions()) {
                 side,
                 state.rules,
                 state.board.elements[position],
-                state.tally,
+                state.tally.including(card, state.rules),
             )
             if (state.rules.reverse) ACE_POWER - power else power
         }

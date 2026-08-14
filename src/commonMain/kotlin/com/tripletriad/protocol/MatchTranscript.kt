@@ -190,5 +190,16 @@ enum class RejectionReason {
  * **3** — `collection` became [MatchTranscript.formatId]. `MODE` is gone, so a transcript names the
  * format it was played in rather than the table its author belonged to.
  * `docs/migration/19-CARD-SETS-AND-FORMATS.md`.
+ *
+ * **4** — Bonus and Malus changed: a card counts itself from the moment it is placed, and the
+ * accumulated penalty stops at 1 rather than 0. The **first bump earned by the engine alone**, and
+ * the case the paragraph above was written for — no field moved, and a stored transcript of a match
+ * played under either rule now replays to a different set of captures. See [AscensionTally].
+ *
+ * The cost is named rather than hidden: a transcript sitting in a client's offline queue when it
+ * updates is refused by [TranscriptVerifier], so a match played before the update and submitted
+ * after it is not credited. That is the correct answer — this build cannot honestly say what that
+ * match did — and it is bounded by how long a queue waits for a network, which is the reason the
+ * queue drains on every launch.
  */
-const val TRANSCRIPT_VERSION: Int = 3
+const val TRANSCRIPT_VERSION: Int = 4

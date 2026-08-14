@@ -309,10 +309,20 @@ class MatchStateTest {
         assertEquals(1, state.play(beast, 4).tally[CardType.BEAST])
     }
 
+    /**
+     * A card counts **itself** the moment it is placed, so a 5 beats a 5 under Bonus.
+     *
+     * The inverse of what this file used to assert. The AS3 ran `ascensionPhase` after the flips
+     * (`TTOCore.as:171`) and the port copied it, so the card that had just landed resolved its own
+     * captures without its own contribution — on the board and not yet counted.
+     *
+     * It is a rules change and it is deliberate: the board now *draws* the modifier, and a badge
+     * reading `+1` on a card that attacked as `+0` would be a screen contradicting itself at the
+     * only moment anybody is looking at it. [com.tripletriad.protocol.CURRENT_VERSION] 3.0.0 and
+     * [com.tripletriad.protocol.TRANSCRIPT_VERSION] 4 carry the change.
+     */
     @Test
-    fun theTallyIsAppliedAfterResolutionNotBefore() {
-        // A 5-top beast card cannot capture a 5-bottom neighbour: at resolution time the
-        // tally is still 0, so it does not benefit from its own +1.
+    fun aPlacedCardCountsItselfImmediately() {
         val beast = card(1).copy(type = CardType.BEAST)
         var state = MatchState.start(
             blueHand = listOf(beast) + hand(from = 2).drop(1),
@@ -323,8 +333,51 @@ class MatchStateTest {
         state = state.play(state.currentHand.first(), 4)
         state = state.play(beast, 1)
 
-        assertEquals(CardColor.RED, state.board[4]?.owner, "5 vs 5 is a tie, so no capture")
+        assertEquals(
+            CardColor.BLUE,
+            state.board[4]?.owner,
+            "the beast's own +1 makes it a 6 against a 5, so it captures",
+        )
         assertEquals(1, state.tally[CardType.BEAST])
+    }
+
+    /**
+     * And the same placement under **no** rule does not capture, which is what makes the above a
+     * statement about Bonus rather than about these two cards.
+     *
+     * Without it the test overhead would pass on an engine that had simply started capturing ties.
+     */
+    @Test
+    fun theSamePlacementWithoutTheRuleIsStillATie() {
+        val beast = card(1).copy(type = CardType.BEAST)
+        var state = MatchState.start(
+            blueHand = listOf(beast) + hand(from = 2).drop(1),
+            redHand = hand(from = 11),
+            first = CardColor.RED,
+        )
+        state = state.play(state.currentHand.first(), 4)
+        state = state.play(beast, 1)
+
+        assertEquals(CardColor.RED, state.board[4]?.owner, "5 vs 5 is a tie, so no capture")
+    }
+
+    /**
+     * A card in hand contributes nothing — the other half of "from the moment it is placed".
+     *
+     * Four beasts held and none played leaves the tally empty, so the first one down is a `+1` and
+     * not a `+4`. The AS3 adjusted hand cards too; this port does not.
+     */
+    @Test
+    fun cardsInHandDoNotCount() {
+        val beasts = hand(from = 1).map { it.copy(type = CardType.BEAST) }
+        val state = MatchState.start(
+            blueHand = beasts,
+            redHand = hand(from = 11),
+            rules = GameRules(typeRule = TypeRule.ASCENSION),
+        )
+
+        assertEquals(AscensionTally.EMPTY, state.tally, "a full hand of beasts counts for nothing")
+        assertEquals(1, state.play(beasts.first(), 4).tally[CardType.BEAST])
     }
 
     @Test

@@ -163,6 +163,32 @@ data class AppVersion(
  * bit-identical. `MatchTranscript` is untouched again, so [TRANSCRIPT_VERSION] holds and the
  * goldens pass unchanged.
  *
+ * ### 3.0.0 — Bonus and Malus, and why the whole unreleased bundle takes this number
+ *
+ * Two changes to what the rules engine computes, both in [com.tripletriad.model.AscensionTally]:
+ * a card counts itself under Bonus/Malus from the moment it is placed, and the accumulated penalty
+ * floors at 1 instead of 0. A match transcript from 2.x therefore replays to a different set of
+ * captures on this build, which is the **first** ground above, stated in its purest form — no
+ * message changed shape at all.
+ *
+ * So this is the bump that clause was written for, and it drags the rest with it. Everything below
+ * was written as 2.2.0 and never shipped: the intent endpoints, `GET /matches/tickets`,
+ * `DELETE /accounts/me`, throttling, and the whole of `withServerOwnedFrom`. Those sections are
+ * kept for what they explain, but the number they name is gone. Two reasons, and the second is the
+ * one that decides it:
+ *
+ * - **2.2.0 had no peers.** Nothing was published, nothing deployed, no client built against it.
+ *   Keeping it would leave a version in this file that no running thing ever reported.
+ * - **A minor promises the replay is unchanged.** That promise is now false for this work, and a
+ *   promise that is false is worse than one that was never made. The last version anybody actually
+ *   ran is 2.1.x, and against that peer this build must refuse — which is what major 3 does and
+ *   what minor 2 could not.
+ *
+ * [TRANSCRIPT_VERSION] moves to 4 with it. `ReplayDeterminismTest`'s goldens **pass untouched**,
+ * and that is not evidence of a missed change: its recorded match is played with no rules at all
+ * (`"[]"`), so no Bonus tally ever forms in it. The two facts are consistent, and the file's own
+ * "the goldens passing across a major is a legitimate outcome" is what they are consistent with.
+ *
  * ### 2.2.0 — the first intent endpoint, and throttling
  *
  * `POST /me/bag/use` moves the booster roll to the server. A **new endpoint** rather than a changed
@@ -184,20 +210,23 @@ data class AppVersion(
  * which side is believed about them. A 2.1.0 client sending its own is silently corrected, which is
  * exactly what it already experienced for quests.
  *
- * ### Why the rest of that work is also 2.2.0, and not 2.3.0
+ * ### Why the rest of that work carried the same number, and not 2.3.0
  *
  * Everything that followed — the remaining intent endpoints, `GET /matches/tickets`, seeds a client
  * may no longer choose, `DELETE /accounts/me`, and the whole of `withServerOwnedFrom` down to
- * `cards` — is folded into this number rather than given its own.
+ * `cards` — was folded into one number rather than given its own.
  *
- * Because **2.2.0 has never shipped**. A version is a promise to peers about what they will find,
- * and there are no peers on this one: nothing was published, nothing deployed, no client built
- * against it. Minting 2.3.0 would record a distinction between two states of the world that only
- * ever existed on one machine, and would leave a number in this file that no running thing ever
- * reported. The contents of an unreleased version are still open; the moment it is tagged, they are
- * not.
+ * Because **it had never shipped**. A version is a promise to peers about what they will find, and
+ * there were no peers on this one: nothing was published, nothing deployed, no client built against
+ * it. Minting a second number would record a distinction between two states of the world that only
+ * ever existed on one machine. The contents of an unreleased version are still open; the moment it
+ * is tagged, they are not.
+ *
+ * That argument is what let the rules-engine change above take the *whole* bundle up to 3.0.0
+ * instead of adding a major on top of a minor nobody had. It is the same reasoning reaching a
+ * different number because the facts changed, which is what makes it a reason and not a habit.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(2, 2, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(3, 0, 0)
 
 /**
  * The header both sides put the version in.

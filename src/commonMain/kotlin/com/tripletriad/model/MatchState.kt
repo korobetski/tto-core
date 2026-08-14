@@ -109,9 +109,11 @@ data class MatchState(
      * Plays [card] from the current hand onto [position].
      *
      * Resolves captures, updates the Ascension/Descension tally and advances the turn.
-     * The tally is applied **after** resolution, mirroring `ascensionPhase` running once
-     * the flips are done (`TTOCore.as:171`) — so the card just placed does not benefit
-     * from its own contribution to the tally.
+     *
+     * The tally passed to [RulesEngine.resolve] is the one from *before* the placement, and the
+     * engine records the placement itself — see there. The copy below records it again for the
+     * next turn, which cannot drift from the engine's: [AscensionTally.including] is pure and both
+     * calls are given the same card and the same rules.
      */
     fun play(card: Card, position: Int): MatchState {
         // checkNotNull, not requireNotNull: "the board is full" is a state error, not a
@@ -130,7 +132,7 @@ data class MatchState(
             board = resolution.board,
             hands = hands + (player to hand.filterIndexed { i, _ -> i != index }),
             placement = placement + 1,
-            tally = tally.record(card.type, rules.typeRule),
+            tally = tally.including(card, rules),
             lastPlay = PlayResult(player, card, position, resolution.captures, index),
         )
     }

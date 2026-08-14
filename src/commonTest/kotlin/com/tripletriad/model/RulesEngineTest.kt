@@ -462,15 +462,83 @@ class RulesEngineTest {
         )
     }
 
+    /**
+     * A card accumulates bonuses up to A and maluses down to 1 — the range, at both ends.
+     *
+     * The floor is 1 rather than 0 because these are the only *cumulative* modifiers in the game.
+     * An unbounded penalty that reached zero would flatten every card of a type to 0 on all four
+     * sides, and a board where they all tie with each other is not a rule, it is the absence of
+     * one. See [MIN_MODIFIED_POWER].
+     */
     @Test
-    fun modifiersCannotEscapeZeroToTen() {
+    fun aBonusStopsAtAceAndAMalusStopsAtOne() {
         val rules = GameRules(typeRule = TypeRule.ASCENSION)
         val high = AscensionTally(mapOf(CardType.BEAST to 20))
         val low = AscensionTally(mapOf(CardType.BEAST to -20))
         val subject = card(top = 5).copy(type = CardType.BEAST)
 
         assertEquals(ACE_POWER, effectivePower(subject, Side.TOP, rules, tally = high))
-        assertEquals(MIN_EFFECTIVE_POWER, effectivePower(subject, Side.TOP, rules, tally = low))
+        assertEquals(MIN_MODIFIED_POWER, effectivePower(subject, Side.TOP, rules, tally = low))
+    }
+
+    /**
+     * And that floor is not a *lift*: a fallen ace stays at 0 under a malus.
+     *
+     * The case `min(base, 1)` in [effectivePower] exists for. A flat floor of 1 would have Malus
+     * quietly *raising* the one card Fallen Ace had put on the floor — two rules cancelling out
+     * through a clamp that neither of them wrote.
+     */
+    @Test
+    fun aMalusDoesNotLiftAFallenAceOffZero() {
+        val rules = GameRules(typeRule = TypeRule.DESCENSION, fallenAce = true)
+        val tally = AscensionTally(mapOf(CardType.BEAST to -3))
+        val ace = card(top = ACE_POWER).copy(type = CardType.BEAST)
+
+        assertEquals(MIN_EFFECTIVE_POWER, effectivePower(ace, Side.TOP, rules, tally = tally))
+    }
+
+    /**
+     * The Elemental penalty keeps the old floor of 0, and having two floors is the point.
+     *
+     * It is a single ±1 decided by the cell rather than a running total, so it cannot flatten a
+     * board, and it is a faithful port of `TTOCore.as:47-56` that this change had no reason to
+     * touch. A 1 on the wrong element is still a 0.
+     */
+    @Test
+    fun theElementalPenaltyStillReachesZero() {
+        val rules = GameRules(typeRule = TypeRule.ELEMENTAL)
+        val weak = card(top = 1).copy(type = CardType.FIRE)
+
+        assertEquals(
+            MIN_EFFECTIVE_POWER,
+            effectivePower(weak, Side.TOP, rules, element = CardType.ICE),
+        )
+    }
+
+    /**
+     * The four powers a board draws are the four the engine fights with.
+     *
+     * [effectivePowers] exists so a screen cannot drift from [effectivePower]; this is what says
+     * they have not. Per-side, because the clamp is per side: on a `+4` tally an 8 reaches the
+     * ceiling and stops while a 2 travels the whole way.
+     */
+    @Test
+    fun theDrawnPowersAreTheFoughtPowersSideBySide() {
+        val rules = GameRules(typeRule = TypeRule.ASCENSION)
+        val tally = AscensionTally(mapOf(CardType.BEAST to 4))
+        val subject = card(top = 8, right = 2, bottom = 5, left = 1).copy(type = CardType.BEAST)
+
+        assertEquals(
+            EdgePowers(top = ACE_POWER, right = 6, bottom = 9, left = 5),
+            effectivePowers(subject, rules, tally = tally),
+        )
+        for (side in Side.entries) {
+            assertEquals(
+                effectivePower(subject, side, rules, tally = tally),
+                effectivePowers(subject, rules, tally = tally)[side],
+                "the drawn power disagrees with the fought power on $side",
+            )
+        }
     }
 
     @Test
