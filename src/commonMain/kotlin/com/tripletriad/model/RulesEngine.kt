@@ -42,10 +42,10 @@ private val CAPTURE_PRECEDENCE = listOf(
 
 /** Which powers Same and Plus compare. See [RulesEngineOptions]. */
 enum class SpecialPowerBasis {
-    /** Printed card values, ignoring Elemental and Ascension. What the AS3 does. */
+    /** Printed card values, ignoring Elemental, Bonus and Malus. The default — see below. */
     PRINTED,
 
-    /** Effective values after modifiers. What FF14 does. */
+    /** Effective values after modifiers. What FF14 does, and not what this game does. */
     EFFECTIVE,
 }
 
@@ -63,14 +63,27 @@ data class RulesEngineOptions(
     /**
      * § 15.4. `TTOCore.specialRule` computes its differences and sums from raw card
      * powers (`:217-251`) while `basicRule` uses modified tile powers — so under
-     * Elemental or Ascension the two disagree, and a card whose effective power is 6
-     * is treated as its printed 5 for Same and Plus. The author's own comment at
-     * `:215` reads as uncertainty rather than a decision. FF14 uses the modified
-     * values.
+     * Elemental, Bonus or Malus the two disagree, and a card whose effective power
+     * is 6 is compared as its printed 5 for Same and Plus.
      *
-     * Set to [SpecialPowerBasis.PRINTED] to reproduce the original exactly.
+     * ### This defaults to PRINTED, and that is a decision rather than fidelity
+     *
+     * It used to default to [SpecialPowerBasis.EFFECTIVE], on the reasoning that FF14
+     * compares modified values and that the AS3 author's comment at `:215` read as
+     * uncertainty. **That was wrong for this game**, and the owner settled it: the
+     * printed numbers are what count for Same and Plus, always. A modifier changes
+     * what a card *fights* with under the basic comparison and nothing else.
+     *
+     * The rest of the design follows from it and is not decoration. Because the
+     * printed values decide Same and Plus, the board must keep **showing** them —
+     * a card drawn with its modifier folded into the digits would be a card whose
+     * displayed numbers are not the ones a player uses to spot a Same. So the
+     * modifier is drawn as a badge over the card and the digits are left alone; see
+     * `TileCell` in the client, where the two halves of this decision meet.
+     *
+     * Set to [SpecialPowerBasis.EFFECTIVE] for the FF14 reading.
      */
-    val specialPowerBasis: SpecialPowerBasis = SpecialPowerBasis.EFFECTIVE,
+    val specialPowerBasis: SpecialPowerBasis = SpecialPowerBasis.PRINTED,
     /**
      * § 15.2. `TTOCore.as:261` gates Same, Plus **and Same Wall** behind
      * `same.length > 1` — at least two occupied neighbours. Same and Plus need two

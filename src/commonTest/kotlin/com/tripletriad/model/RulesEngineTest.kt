@@ -285,6 +285,14 @@ class RulesEngineTest {
         )
     }
 
+    /**
+     * Same reads printed powers **by default**, and effective ones only if asked.
+     *
+     * The default flipped to `PRINTED` when the owner settled the rule — a modifier changes what a
+     * card fights with under the basic comparison and nothing else. Both branches are still
+     * asserted, because the option still exists and a switch nobody exercises is a switch that
+     * quietly stops working.
+     */
     @Test
     fun sameArithmeticFollowsTheConfiguredPowerBasis() {
         // Centre tile is a fire tile; the placed card is fire, so +1 to every side.
@@ -295,18 +303,20 @@ class RulesEngineTest {
         val placed = card(id = 9, top = 4, left = 6).copy(type = CardType.FIRE)
         val rules = GameRules(same = true, typeRule = TypeRule.ELEMENTAL)
 
-        val effective = engine(rules).resolve(start, At.CENTRE, placed, CardColor.BLUE)
+        val byDefault = engine(rules).resolve(start, At.CENTRE, placed, CardColor.BLUE)
+        assertFalse(
+            byDefault.captures.any { it.kind == CaptureKind.SAME },
+            "the default is PRINTED: 4 != 5 and 6 != 7, so Same must not fire",
+        )
+
+        val effective = engine(
+            rules,
+            RulesEngineOptions(specialPowerBasis = SpecialPowerBasis.EFFECTIVE),
+        ).resolve(start, At.CENTRE, placed, CardColor.BLUE)
         assertEquals(
             CaptureKind.SAME,
             effective.kindAt(At.TOP_MID),
             "with EFFECTIVE, 4+1 == 5 and 6+1 == 7, so both match",
-        )
-
-        val printed = engine(rules, RulesEngineOptions.FAITHFUL)
-            .resolve(start, At.CENTRE, placed, CardColor.BLUE)
-        assertFalse(
-            printed.captures.any { it.kind == CaptureKind.SAME },
-            "with PRINTED, 4 != 5 and 6 != 7 — the AS3 behaviour, game-rules.md 15.4",
         )
     }
 
@@ -516,29 +526,34 @@ class RulesEngineTest {
     }
 
     /**
-     * The four powers a board draws are the four the engine fights with.
+     * Same and Plus read the **printed** powers, not the modified ones.
      *
-     * [effectivePowers] exists so a screen cannot drift from [effectivePower]; this is what says
-     * they have not. Per-side, because the clamp is per side: on a `+4` tally an 8 reaches the
-     * ceiling and stops while a 2 travels the whole way.
+     * The rule the owner settled, and the reason the board keeps drawing a card's own digits: a 5
+     * beside a 5 is a Same even when one of them is standing on a `+3` Bonus board, because those
+     * are the numbers on the cards. If this ever flips back to `EFFECTIVE`, the display decision in
+     * `CardFace` becomes a lie on the same day — the two are one choice, so this test names it.
      */
     @Test
-    fun theDrawnPowersAreTheFoughtPowersSideBySide() {
-        val rules = GameRules(typeRule = TypeRule.ASCENSION)
-        val tally = AscensionTally(mapOf(CardType.BEAST to 4))
-        val subject = card(top = 8, right = 2, bottom = 5, left = 1).copy(type = CardType.BEAST)
+    fun sameAndPlusCompareThePrintedPowers() {
+        val rules = GameRules(typeRule = TypeRule.ASCENSION, same = true)
+        // Blue's card and both defenders show 5 on the facing sides, printed.
+        val defender = card(id = 1, bottom = 5).copy(type = CardType.BEAST)
+        val other = card(id = 2, right = 5).copy(type = CardType.BEAST)
+        val start = board(
+            Triple(At.TOP_MID, defender, CardColor.RED),
+            Triple(At.MID_LEFT, other, CardColor.RED),
+        )
+        // A beast on a board already holding two, so the tally lifts every one of them.
+        val placed = card(id = 3, top = 5, left = 5).copy(type = CardType.BEAST)
+        val tally = AscensionTally(mapOf(CardType.BEAST to 2))
+
+        val result = engine(rules).resolve(start, At.CENTRE, placed, CardColor.BLUE, tally)
 
         assertEquals(
-            EdgePowers(top = ACE_POWER, right = 6, bottom = 9, left = 5),
-            effectivePowers(subject, rules, tally = tally),
+            setOf(At.TOP_MID, At.MID_LEFT),
+            result.captures.filter { it.kind == CaptureKind.SAME }.map { it.position }.toSet(),
+            "Same did not fire on two printed 5s under a Bonus tally",
         )
-        for (side in Side.entries) {
-            assertEquals(
-                effectivePower(subject, side, rules, tally = tally),
-                effectivePowers(subject, rules, tally = tally)[side],
-                "the drawn power disagrees with the fought power on $side",
-            )
-        }
     }
 
     @Test
