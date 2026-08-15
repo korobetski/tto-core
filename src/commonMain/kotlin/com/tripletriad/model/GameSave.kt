@@ -86,7 +86,8 @@ data class Boons(
 }
 
 /**
- * A saved five-card deck. `Save.DATAS.DECKS` (`Save.as:31`), whose comment caps it at 5 decks.
+ * A saved five-card deck. `Save.DATAS.DECKS` (`Save.as:31`), whose comment caps the *number* of
+ * decks at five — see [GameSave.MAX_DECKS], which is where this port departs from that and why.
  *
  * The card list is **not** validated to five here: the AS3 deck builder allows a partial deck to be
  * saved and `DeckSelector` refuses to start a match with one. Validating at construction would make
@@ -570,9 +571,40 @@ data class GameSave(
         /** `Save.as:40`. */
         const val DEFAULT_AVATAR = "ffxiv_twi03005"
 
-        /** `Save.as:31`, and the comment there that caps decks at five. */
+        /** `Save.as:31`. */
         const val DEFAULT_DECK_NAME = "Starter deck"
-        const val MAX_DECKS = 5
+
+        /**
+         * How many deck slots a profile has. **Eight, where `Save.as:31` caps it at five.**
+         *
+         * ### The deviation, and why it is one
+         *
+         * The original's five is a number in a comment beside a five-element array literal, not a
+         * rule the game enforces anywhere else: nothing in `Save.as`, `DecksScreen.as` or the match
+         * code cares how many slots there are, and no rule, achievement or price is derived from
+         * the count. It is a capacity, and capacities are the one kind of constant a port is
+         * entitled to revisit — unlike, say, `HAND_SIZE`, which five other things are arithmetic
+         * over.
+         *
+         * Eight because the client now ships three formats with different admitted pools, and five
+         * slots stopped being enough to keep one deck per format plus the ones a player is actually
+         * building. That is a product decision; it is written here rather than in the UI because
+         * the model is what enforces it — see [withDeck] and [sane].
+         *
+         * ### What raising it costs, and what it does not
+         *
+         * - **Existing saves are unaffected.** [sane] *truncates* to this number and never pads, so
+         *   a five-deck save stays a five-deck save and simply gains three empty slots on screen.
+         * - **A server on an older `core` is unaffected**, which is not obvious and was checked:
+         *   `tto-server` stores the profile as verbatim JSON and never calls [sane], and a chosen
+         *   deck slot is resolved with `decks.getOrNull(slot)` in `PveMatch.playerDeck` with no
+         *   bound of its own. So an eight-deck save round-trips, and slot 6 resolves, against a
+         *   server that still thinks the cap is five.
+         * - **Downgrading loses decks.** A client built against a `core` where this is 5 will run
+         *   [sane] over an eight-deck save and drop slots 6 to 8. That is the one direction with a
+         *   cost, and it is the usual cost of a capacity going up.
+         */
+        const val MAX_DECKS = 8
 
         /** `Save.as:35`. */
         const val STARTING_MGP = 100

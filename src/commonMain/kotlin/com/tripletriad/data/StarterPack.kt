@@ -83,8 +83,8 @@ object StarterPack {
      * The authored deck is prepended when none of the saved decks can be fielded, which is always
      * the case here: a profile owed this pack owns fewer than five playable cards, so no complete
      * deck can be affordable. The list is trimmed to [GameSave.MAX_DECKS], so a character already
-     * holding five named decks loses the last of them — decks it demonstrably cannot play, on the
-     * one path that exists to make it playable again.
+     * holding a full set of named decks loses the last of them — decks it demonstrably cannot
+     * play, on the one path that exists to make it playable again.
      *
      * Unchanged when nothing is authored at all, which [StarterCatalog.violations] refuses at
      * authoring time. A shipped catalogue with no starter in it is a content bug, and giving

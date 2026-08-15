@@ -196,7 +196,11 @@ class GameSaveTest {
             "positive ids held a positive number of times; a copy count is not a duplicate",
         )
         assertEquals(listOf(CardItem(2, 3)), save.bag, "an empty stack is not an item")
-        assertEquals(GameSave.MAX_DECKS, save.decks.size, "Save.as:31 caps decks at five")
+        assertEquals(
+            GameSave.MAX_DECKS,
+            save.decks.size,
+            "a file may hold more slots than the model does; `sane` trims and never pads",
+        )
     }
 
     @Test
@@ -352,7 +356,7 @@ class GameSaveTest {
     }
 
     @Test
-    fun aSlotOutsideTheFiveIsAProgrammingError() {
+    fun aSlotOutsideTheDeckRangeIsAProgrammingError() {
         val save = GameSave.new(createdAt = 0L)
 
         assertFailsWith<IllegalArgumentException> { save.withDeck(GameSave.MAX_DECKS, Deck("x")) }
