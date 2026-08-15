@@ -15,6 +15,7 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -213,6 +214,45 @@ class PveMatchTest {
         assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = 1))
         assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = ANY_DECK))
         assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = 99))
+    }
+
+    /**
+     * A deck naming a card the profile no longer holds falls back too — **the card wager's case**.
+     *
+     * [GameSave.withoutCard] takes the card and leaves the decks alone on purpose, on the reading
+     * that an unaffordable deck is refused rather than rewritten. [PveMatches.playableDecks] did
+     * refuse it; these two did not, because [Deck.isComplete] counts to five and asks nothing about
+     * ownership. So the loser of a card wager went on fielding the card they had just lost, in this
+     * match and in every one after it.
+     *
+     * The named slot is the one that matters: it is what the referee deals a player-versus-player
+     * match from, which is the same place the card was lost.
+     */
+    @Test
+    fun aDeckNamingACardNoLongerOwnedFallsBackToWhatCanBePlayed() {
+        val lost = ff14(3)
+        val save = profile(
+            // Twelve cards, then the third is taken by a wager — the deck still names it.
+            cards = (1..12).associate { ff14(it) to 1 } - lost,
+            decks = listOf(Deck("Full", (6..10).map(::ff14)), Deck("Wagered", (1..5).map(::ff14))),
+        )
+
+        assertFalse(lost in PveMatches.playerDeck(save, deck = 1), "the lost card was dealt")
+        assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = 1))
+        // And the deck itself is untouched: refused, not silently edited down to four cards.
+        assertEquals(HAND_SIZE, save.decks[1].cards.size)
+    }
+
+    /** The same for the default lookup: the first complete deck must also be an affordable one. */
+    @Test
+    fun theDefaultDeckSkipsOneThatCannotBeAfforded() {
+        val playable = (6..10).map(::ff14)
+        val save = profile(
+            cards = (1..12).associate { ff14(it) to 1 } - ff14(3),
+            decks = listOf(Deck("Wagered", (1..5).map(::ff14)), Deck("Full", playable)),
+        )
+
+        assertEquals(playable, PveMatches.playerDeck(save))
     }
 
     /** The complete deck is played, not the first five cards owned. */

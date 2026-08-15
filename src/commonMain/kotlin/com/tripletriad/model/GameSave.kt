@@ -374,6 +374,23 @@ data class GameSave(
     }
 
     /**
+     * How many copies of [cardId] are **not** promised to a deck.
+     *
+     * What a player may safely part with. Selling is the caller — see the collection browser — and
+     * without this it would be possible to sell the copy a saved deck is built around, leaving a
+     * deck [Deck.isAffordable] refuses and a match the server will not accept. The player would
+     * meet that as a rejection at the point of play, which is the worst place to learn it.
+     *
+     * The **maximum** over decks rather than the sum: five decks each fielding one copy of a card
+     * need one copy between them, not five. A deck listing the same card twice needs two, which is
+     * why the count is per deck rather than a membership test.
+     */
+    fun spareCopiesOf(cardId: Int): Int {
+        val reserved = decks.maxOfOrNull { deck -> deck.cards.count { it == cardId } } ?: 0
+        return (copiesOf(cardId) - reserved).coerceAtLeast(0)
+    }
+
+    /**
      * Removes [copies] of [cardId], dropping the entry entirely when the last one goes.
      *
      * The inverse of [withCard], and the only thing in this game that takes a card **away** from a
@@ -386,34 +403,22 @@ data class GameSave(
      * state makes a zero meaningful, so none is stored.
      *
      * **The decks are deliberately left alone.** A deck that named the last copy is now
-     * unaffordable, and the right thing already happens without touching it:
-     * `PveMatch.playableDecks` filters on [Deck.isAffordable] *live*, and its KDoc says why — "a
-     * stored deck can become unaffordable without being edited". Pruning the card out here would
-     * silently rewrite something the player built, as a side effect of losing a match, and hand
-     * them back a four-card deck they never made. Leaving it means the deck is refused with its
-     * five cards intact and repairs itself the moment another copy is obtained.
+     * unaffordable, and the answer is to refuse the deck rather than to edit it: pruning the card
+     * out here would silently rewrite something the player built, as a side effect of losing a
+     * match, and hand them back a four-card deck they never made. Leaving it means the deck is
+     * refused with its five cards intact and repairs itself the moment another copy is obtained.
+     *
+     * **That only works if every lookup actually refuses it**, and for a long time one did not.
+     * `PveMatch.playableDecks` has always filtered on [Deck.isAffordable] — "a stored deck can
+     * become unaffordable without being edited" — but `PveMatch.playerDeck`, which is what the
+     * *referee* deals a player-versus-player match from, checked [Deck.isComplete] alone. So the
+     * loser of a card wager kept fielding the card they had just lost. The two lookups agree now;
+     * if a third is ever added, it is this promise it has to keep.
      *
      * Floors at zero rather than throwing. Whether a wager was legal is the server's to check
      * before the match starts; a credit path that threw halfway through would leave a match half
      * settled, which is worse than a subtraction that cannot go negative.
      */
-    /**
-     * How many copies of [cardId] are **not** promised to a deck.
-     *
-     * What a player may safely part with. Selling is the caller — see the collection browser — and
-     * without this it would be possible to sell the copy a saved deck is built around, leaving a
-     * deck `Deck.isAffordable` refuses and a match the server will not accept. The player would
-     * meet that as a rejection at the point of play, which is the worst place to learn it.
-     *
-     * The **maximum** over decks rather than the sum: five decks each fielding one copy of a card
-     * need one copy between them, not five. A deck listing the same card twice needs two, which is
-     * why the count is per deck rather than a membership test.
-     */
-    fun spareCopiesOf(cardId: Int): Int {
-        val reserved = decks.maxOfOrNull { deck -> deck.cards.count { it == cardId } } ?: 0
-        return (copiesOf(cardId) - reserved).coerceAtLeast(0)
-    }
-
     fun withoutCard(cardId: Int, copies: Int = 1): GameSave {
         require(copies > 0) { "copies must be positive, was $copies" }
         val left = copiesOf(cardId) - copies

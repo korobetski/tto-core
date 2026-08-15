@@ -172,9 +172,20 @@ object PveMatches {
      * Still the default rather than dead code now that [DeckSelectorScreen] exists: it is what a
      * caller assembling a match without asking anybody gets, which is every test that does not care
      * which five cards it plays.
+     *
+     * ### Complete **and affordable**, which it was not
+     *
+     * `isComplete` counts to five and asks nothing about ownership, so this used to hand back a
+     * deck naming a card the profile no longer holds — and [GameSave.withoutCard] leaves decks
+     * alone on purpose, so losing the last copy in a card wager is exactly how a deck gets into
+     * that state. The player went on fielding a card that had already changed hands.
+     *
+     * [playableDecks] has always made this check and its KDoc is where the reasoning is: a stored
+     * deck can become unaffordable without being edited. The two lookups simply disagreed about
+     * what a usable deck is, and the one that skipped the check is the one that *deals*.
      */
     fun playerDeck(profile: GameSave): List<Int> =
-        profile.decks.firstOrNull { it.isComplete }?.cards
+        profile.decks.firstOrNull { it.isComplete && it.isAffordable(profile.cards) }?.cards
             ?: profile.ownedCardIds().take(HAND_SIZE)
 
     /**
@@ -191,13 +202,29 @@ object PveMatches {
      * they made one. The moment to tell somebody their deck is incomplete is in the deck editor,
      * and that is where it is told.
      *
+     * ### The card wager is why affordability is checked here
+     *
+     * This overload is the **referee's**: it is what deals a player-versus-player match. A card
+     * wager takes a card out of the loser's collection and leaves their decks untouched — see
+     * [GameSave.withoutCard], which argues at length for not rewriting something the player built
+     * as a side effect of losing. That argument holds only as long as the deck is then *refused*,
+     * and this lookup was not refusing it: `isComplete` counts to five, so the loser brought the
+     * card they had just lost to their next match, and every match after it.
+     *
+     * The same fallback answers it. An unaffordable deck is an unusable choice like any other, so
+     * it quietly becomes no choice, the five cards stay in the deck the player built, and the deck
+     * comes back the moment another copy is obtained.
+     *
      * @param deck a slot in [GameSave.decks]. Any index outside it — the protocol's `ANY_DECK`
      *   among them — means nothing was chosen and leaves it to [playerDeck]. Named that way
      *   rather than by importing the constant: `protocol` already depends on this package, and
      *   a link back would close the circle for the sake of one KDoc reference.
      */
     fun playerDeck(profile: GameSave, deck: Int): List<Int> =
-        profile.decks.getOrNull(deck)?.takeIf { it.isComplete }?.cards ?: playerDeck(profile)
+        profile.decks.getOrNull(deck)
+            ?.takeIf { it.isComplete && it.isAffordable(profile.cards) }
+            ?.cards
+            ?: playerDeck(profile)
 
     private fun resolve(ids: List<Int>, cards: Map<Int, Card>, what: String): List<Card> {
         val resolved = ids.mapNotNull { cards[it] }
