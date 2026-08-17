@@ -2,7 +2,6 @@ package com.tripletriad.protocol
 
 import com.tripletriad.model.AscensionTally
 import com.tripletriad.model.Board
-import com.tripletriad.model.Capture
 import com.tripletriad.model.Card
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.CardType
@@ -45,23 +44,16 @@ import kotlinx.serialization.Serializable
  * refuses the connection — not something a fatter payload would have rescued.
  */
 
-/** A card in a cell, as two integers: which card, and whose it is now. */
-@Serializable
-data class PvpCell(val cardId: Int, val owner: CardColor)
+/**
+ * A card in a cell — [BoardCell], under the name this file used when it was the only refereed
+ * match there was.
+ *
+ * An alias rather than a rename, so that no caller and no payload moved. See `MatchWire.kt`.
+ */
+typealias PvpCell = BoardCell
 
 /**
- * The placement that just happened, as [PlayResult] travels.
- *
- * ### Why the captures have to be sent rather than recomputed
- *
- * A PvE client runs the engine, so it learns what a move flipped as a side effect of making it.
- * A refereed client never runs the engine at all — and the side that did *not* move has no move to
- * run. Recomputing from the two boards would recover *which* cards changed hands but not
- * [Capture.kind] or [Capture.wave], and those are the whole content of the Same, Plus and Combo
- * announcements: a flip is a flip on the board, and only the resolution knows it was a combo.
- *
- * So the engine's own answer is what travels. This is the one place the protocol carries something
- * derived rather than something stated, and it earns it: the derivation is not reversible.
+ * The placement that just happened — [Placement], under this file's older name.
  *
  * ### What it is not
  *
@@ -69,18 +61,10 @@ data class PvpCell(val cardId: Int, val owner: CardColor)
  * than a history — a client animating the last move is all this is for. The move *history* lives on
  * the server as the match's inputs and is what makes a settlement auditable; this is presentation.
  *
- * @property cardId the card placed, by id, as everything else on this wire is.
- * @property handIndex which slot it came out of. Not a leak: the card is face up on the board now,
- *   and the slot is what `HandVisibility.afterPlaying` needs to keep an Open hand lined up.
+ * Note the environment match does **not** hold to that, and cannot: its server answers one request
+ * with two placements, the player's and the opponent's reply. See `PveMatchView.plays`.
  */
-@Serializable
-data class PvpPlay(
-    val player: CardColor,
-    val cardId: Int,
-    val position: Int,
-    val captures: List<Capture> = emptyList(),
-    val handIndex: Int = 0,
-)
+typealias PvpPlay = Placement
 
 /**
  * One side's view of a live match, as it travels.

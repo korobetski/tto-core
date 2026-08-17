@@ -176,8 +176,19 @@ enum class MatchIntroStep {
  * A match ready to play, plus what the UI should announce before the first move.
  *
  * @property state the match, with hands dealt, elements rolled and the first player decided.
- * @property opponentVisibility what the local (blue) player may see of the red hand. The reverse
- *   direction is not modelled: the original always shows a player their own cards.
+ * @property opponentVisibility what the local (blue) player may see of the red hand.
+ * @property playerVisibility what **red** may see of the blue hand.
+ *
+ * This used to say "the reverse direction is not modelled: the original always shows a player their
+ * own cards", and that was right for as long as the opponent was a program running inside the same
+ * client. It is not any more. A refereed environment match runs the opponent on the server, and an
+ * opponent that reads its opponent's hand off the state it happens to hold is not obeying All Open
+ * and Three Open — it is ignoring them. Under [OpenRule.NONE] this is [HandVisibility.HIDDEN] and
+ * the AI is genuinely in the dark, which is the honest reading of a rule nobody declared.
+ *
+ * Drawn separately from [opponentVisibility] rather than mirrored, for the reason
+ * [MatchPreparation.prepareVersus] gives at length: under Three Open the two are **not** mirror
+ * images, and deriving one from the other leaks whichever slots the other side happened to reveal.
  * @property coinFlip the three rolls to animate, or `null` on a Sudden Death rematch — the turn
  *   order carries over and there is no new flip (`BaseMatchScreen.as:238`).
  */
@@ -186,7 +197,12 @@ data class MatchSetup(
     val opponentVisibility: HandVisibility,
     val coinFlip: CoinFlip?,
     val intro: List<MatchIntroStep>,
-)
+    val playerVisibility: HandVisibility = HandVisibility.HIDDEN,
+) {
+    /** What [side] may see of the other hand — the argument [MatchView.of] wants. */
+    fun visibilityFor(side: CardColor): HandVisibility =
+        if (side == CardColor.BLUE) opponentVisibility else playerVisibility
+}
 
 /**
  * Where the local player's hand comes from.
@@ -335,6 +351,23 @@ object MatchPreparation {
             rules = rules,
             elements = elementsFor(rules, random),
         )
+        /*
+         * **One draw, not two**, and `playerVisibility` left at its default.
+         *
+         * [prepareVersus] draws both, because there it is load-bearing: the opponent is refereed,
+         * it is given a `MatchView` like anybody else, and what Three Open shows it of the player's
+         * hand has to be decided rather than assumed. This function is the *local* deal, and its
+         * only production caller is `PveMatches.assemble` — the tutorial. There the opponent is a
+         * program in this same process with the whole state in hand, so a visibility drawn for it
+         * would say nothing it could not already see: Open is only about what the screen draws.
+         *
+         * That is the whole reason, and there is a second one that decides it. Under Three Open
+         * `HandVisibility.forRule` **reads the generator**, so a second call here consumes an extra
+         * value and shifts every later draw. It did, briefly, and `NpcRatingBundleTest` caught it:
+         * one opponent's measured difficulty moved a band because the deal it was measured on was
+         * no longer the same deal. Anything that adds a draw to this function changes what every
+         * seed deals, which is a migration question and not a refactor.
+         */
         return MatchSetup(
             state = state,
             opponentVisibility = HandVisibility.forRule(rules.open, opponentHand, random),
@@ -367,15 +400,20 @@ object MatchPreparation {
         } else {
             regrouped
         }
+        // Both, in the same order [prepare] draws them. A rematch rebuilds the hands out of what
+        // each side ended up owning, so a visibility carried over from the previous board would
+        // name slots that now hold different cards.
+        val blueSeesRed =
+            HandVisibility.forRule(rules.open, state.hands[CardColor.RED].orEmpty(), random)
+        val redSeesBlue =
+            HandVisibility.forRule(rules.open, state.hands[CardColor.BLUE].orEmpty(), random)
+
         return MatchSetup(
             state = state,
-            opponentVisibility = HandVisibility.forRule(
-                rules.open,
-                state.hands[CardColor.RED].orEmpty(),
-                random,
-            ),
+            opponentVisibility = blueSeesRed,
             coinFlip = null,
             intro = introSteps(rules, rematch = true),
+            playerVisibility = redSeesBlue,
         )
     }
 
