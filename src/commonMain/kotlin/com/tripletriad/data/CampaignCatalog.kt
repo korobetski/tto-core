@@ -1,5 +1,7 @@
 package com.tripletriad.data
 
+import com.tripletriad.model.GameSave
+import com.tripletriad.model.ItemReward
 import com.tripletriad.model.MatchResult
 import com.tripletriad.model.Npc
 import kotlinx.serialization.SerialName
@@ -75,7 +77,20 @@ data class CampaignStep(
  *   the format is saying what it always meant. `PVEScreen.as:84,91` shows the Card
  *   Club only to an `ff8_` character and the Gold Saucer only to an `ff14_` one, so no profile can
  *   see both.
- * @property fee what entering costs, once, for the whole ladder — 500 MGP for both.
+ * @property fee what entering costs, once, for the whole ladder — 500 MGP for the two AS3 ladders.
+ * @property requiresAchievement an achievement that must be held before this ladder can be
+ *   entered, or null when it is open to anyone who can pay. How a tournament is earned rather than
+ *   bought: Balamb is the way in to the Card Club. Held as an id rather than a campaign key so that
+ *   anything awardable can gate anything gatable.
+ * @property dropMultiplier what the rungs' own [Npc.itemRewards] rates are multiplied by inside a
+ *   run. Rates are probabilities, so the product is bounded at 1 where it is applied. Does **not**
+ *   reach [finalReward], which belongs to the ladder rather than to any opponent.
+ * @property xpMultiplier the same, for the XP a rung pays.
+ * @property payoutMultiplier what finishing pays, as a multiple of [fee]. Above 1 by intent: a
+ *   tournament won must return more than it cost, or its stake is a fine rather than a wager.
+ * @property finalReward what completing the ladder yields, drawn once from this lot. Owed to the
+ *   *run*, not to the last opponent — beating the final rung is what triggers it, but the prize is
+ *   the tournament's own and does not pass through that opponent's drop table.
  */
 @Serializable
 data class Campaign(
@@ -84,11 +99,26 @@ data class Campaign(
     val format: String,
     val fee: Int,
     val steps: List<CampaignStep>,
+    val requiresAchievement: String? = null,
+    val dropMultiplier: Double = 1.0,
+    val xpMultiplier: Double = 1.0,
+    val payoutMultiplier: Double = 1.0,
+    val finalReward: List<ItemReward> = emptyList(),
 ) {
     init {
         require(steps.isNotEmpty()) { "campaign '$key' has no opponents" }
         require(fee >= 0) { "campaign '$key' has a negative fee: $fee" }
+        require(dropMultiplier >= 1.0) { "campaign '$key' would lower its own drops" }
+        require(xpMultiplier >= 1.0) { "campaign '$key' would lower its own XP" }
+        require(payoutMultiplier >= 0.0) { "campaign '$key' has a negative payout" }
     }
+
+    /** What finishing this ladder pays back in MGP, from what entering it cost. */
+    val payout: Int get() = (fee * payoutMultiplier).toInt()
+
+    /** Whether [save] may enter: an unheld [requiresAchievement] is what keeps a ladder shut. */
+    fun isUnlockedFor(save: GameSave): Boolean =
+        requiresAchievement?.let(save::hasAchievement) != false
 
     /** The opponents in ladder order, which is also the order the entry screen lists them. */
     val opponents: List<Npc> get() = steps.map { it.npc }

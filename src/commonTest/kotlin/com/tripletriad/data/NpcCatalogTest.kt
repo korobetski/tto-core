@@ -68,6 +68,21 @@ class NpcCatalogTest {
               "MGPReward": { "w": 15, "d": 7, "l": 2 },
               "itemRewards": [],
               "difficulty": 0
+            },
+            {
+              "id": 99,
+              "name": "APP_NPC_ISHTAR",
+              "iconID": "ishtar",
+              "formats": ["ff8-standard"],
+              "rules": ["RULE_RANDOM", "RULE_ROULETTE"],
+              "fetishesCards": [],
+              "cards": [1, 2, 3],
+              "level": "STR_NPC_LEVEL_EXPERT",
+              "matchFee": 30,
+              "MGPReward": { "w": 128, "d": 56, "l": 28 },
+              "itemRewards": [],
+              "difficulty": 0,
+              "requiresAchievement": "ac-cmp-cc"
             }
           ]
         }
@@ -116,8 +131,8 @@ class NpcCatalogTest {
     @Test
     fun collectionsAreSelectedByMode() {
         assertEquals(2, catalog.playing(FF14).size)
-        assertEquals(1, catalog.playing(FF8).size)
-        assertEquals(3, catalog.all.size)
+        assertEquals(2, catalog.playing(FF8).size)
+        assertEquals(4, catalog.all.size)
     }
 
     /** Ids repeat across the ff8 table, so lookup is by icon. */
@@ -180,6 +195,44 @@ class NpcCatalogTest {
         assertEquals(0, catalog.lockedByLevel(FF14, hour = 12, level = 1))
     }
 
+    /**
+     * An opponent behind an achievement is off the list until it is held.
+     *
+     * The default matters as much as the filter: [NpcCatalog.available] takes no achievements at
+     * all unless it is given some, so a caller that forgets a profile under-lists. Getting that
+     * backwards would offer a match the server refuses.
+     */
+    @Test
+    fun anUnearnedOpponentIsNotListed() {
+        fun icons(earned: Set<String>) =
+            catalog.available(FF8, hour = 12, level = ANY_LEVEL, earned = earned).map { it.iconId }
+
+        assertEquals(listOf("kid"), icons(emptySet()), "unearned by default")
+        assertEquals(listOf("kid"), icons(setOf("ac-cmp-balamb")), "and by the wrong achievement")
+        assertEquals(
+            listOf("kid", "ishtar"),
+            icons(setOf(CARD_CLUB)),
+            "winning the Card Club is what opens her",
+        )
+    }
+
+    /**
+     * The unearned are counted apart from the level-locked, and the two say different things.
+     *
+     * Folding them together would tell a player that Ishtar "opens up as you level", which is the
+     * one thing levelling will never do — see `NpcCatalog.lockedByAchievement`.
+     */
+    @Test
+    fun theUnearnedAreCountedApartFromTheLevelLocked() {
+        assertEquals(1, catalog.lockedByAchievement(FF8, earned = emptySet()))
+        assertEquals(0, catalog.lockedByAchievement(FF8, earned = setOf(CARD_CLUB)))
+        assertEquals(0, catalog.lockedByAchievement(FF14, earned = emptySet()), "none in ff14")
+
+        // The FFVIII table declares difficulty 0 throughout, so nothing there is level-locked —
+        // which is what makes this the cleanest place to show the two counts are independent.
+        assertEquals(0, catalog.lockedByLevel(FF8, hour = 12, level = 1))
+    }
+
     /** `ignoreUnknownKeys`, so a field this build does not know about does not break parsing. */
     @Test
     fun anUnknownFieldIsIgnored() {
@@ -216,3 +269,8 @@ private const val FF14: String = "ff14-standard"
 private const val FF8: String = "ff8-standard"
 
 private const val ANY_LEVEL: Int = 99
+
+/** What the fixture's one gated opponent is waiting on. `AchievementCatalog.CAMPAIGN_CARD_CLUB`.
+ * Spelled out rather than referenced, so this stays a test of the *wire shape*.
+ */
+private const val CARD_CLUB: String = "ac-cmp-cc"

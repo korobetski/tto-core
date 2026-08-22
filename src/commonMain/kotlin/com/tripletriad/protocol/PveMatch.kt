@@ -64,12 +64,21 @@ data class PveMove(val handIndex: Int, val position: Int)
  * uses one: `PveMatches.playerDeck` resolves it against the profile the *server* holds, so a client
  * can choose which of its decks to bring and still cannot name a card it does not own. [ANY_DECK]
  * means no choice was made and lands on the first complete, affordable deck.
+ *
+ * @property campaignKey the tournament this match belongs to, or null for an ordinary one.
+ *
+ * A **claim, not a licence**: it says which run the client believes it is playing, and the run's
+ * terms — the opponent's own stake waived, its drops and XP multiplied — are granted only after
+ * matching it against the `CampaignRun` the profile actually holds, and only when that run stands
+ * on this very opponent. Taken on trust it would be a request for cheaper matches and richer
+ * rewards, which is most of what an entry fee buys.
  */
 @Serializable
 data class PveMatchRequest(
     val opponentIconId: String,
     val formatId: String,
     val deck: Int = ANY_DECK,
+    val campaignKey: String? = null,
 )
 
 /**
@@ -299,6 +308,16 @@ enum class PveRefusal {
 
     /** The profile cannot field five cards in this format. */
     UNDEALABLE,
+
+    /**
+     * The match claims a tournament rung the player is not standing on.
+     *
+     * No open run, a run in a different ladder, or the wrong rung of the right one. Its own code
+     * rather than [NO_SUCH_OPPONENT] because the two ask for opposite things from a client: that
+     * one means the catalogues disagree, this one means the client's idea of where the run stands
+     * is stale and it should re-read the profile.
+     */
+    NOT_ON_THAT_RUNG,
 }
 
 /** A refusal, as the code a client acts on and the sentence a human reads. */

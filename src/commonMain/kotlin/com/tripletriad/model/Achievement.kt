@@ -51,6 +51,18 @@ sealed interface Requirement {
     }
 
     /**
+     * Win the tournament [campaignKey], [count] times over.
+     *
+     * Not an AS3 requirement — the original's ladders recorded nothing at all. Reads
+     * [GameSave.campaignWins] and not [GameSave.campaignRun], because a run is cleared the moment
+     * it resolves and the question asked here is what a player has *ever* finished.
+     */
+    data class CampaignWins(val campaignKey: String, val count: Int = 1) : Requirement {
+        override fun progress(save: GameSave) =
+            Progress(save.campaignWins[campaignKey] ?: 0, count)
+    }
+
+    /**
      * Win [count] matches with [ruleKey] active. `RULES_W[ruleKey]` — the Wheel of Fortune tier,
      * which uses `RULE_ROULETTE`.
      *
@@ -178,6 +190,13 @@ object AchievementCatalog {
             iconId = "card_thumb_${Card.idFor(block = 1, number = 37)}",
             requirement = Requirement.CardSetOwned(BEAST_CARDS),
         ),
+        // Tournaments won. Authored here rather than ported: the original recorded no ladder
+        // result at all, so none of these could have existed. Each is also a key that *opens*
+        // something — see `Campaign.requiresAchievement` — which is why they are one per ladder
+        // rather than a single tiered "win n tournaments".
+        campaign(CAMPAIGN_BALAMB, "APP_AC_CAMPAIGN_BALAMB", "balamb"),
+        campaign(CAMPAIGN_CARD_CLUB, "APP_AC_CAMPAIGN_CC", "cc"),
+        campaign(CAMPAIGN_GOLD_SAUCER, "APP_AC_CAMPAIGN_GS", "gs"),
     )
 
     private val byId: Map<String, Achievement> = all.associateBy { it.id }
@@ -199,6 +218,9 @@ object AchievementCatalog {
     private fun tripleTeam(id: String, labelKey: String, wins: Int, reward: Item? = null) =
         Achievement(id, labelKey, NPC_ICON, Requirement.NpcWins(wins), reward)
 
+    private fun campaign(id: String, labelKey: String, campaignKey: String) =
+        Achievement(id, labelKey, NPC_ICON, Requirement.CampaignWins(campaignKey))
+
     private fun roulette(
         id: String,
         labelKey: String,
@@ -215,6 +237,17 @@ object AchievementCatalog {
 
     /** `Achievements.as:17` — a numeric FFXIV icon id, not a descriptive name. */
     private const val NPC_ICON = "000713"
+
+    /**
+     * The tournament achievements, named because they are *keys*: a ladder or an opponent names
+     * one in `requiresAchievement` to stay shut until it is held, so these ids are referred to
+     * from data files and must not be spelled out twice.
+     */
+    const val CAMPAIGN_BALAMB: String = "ac-cmp-balamb"
+
+    const val CAMPAIGN_CARD_CLUB: String = "ac-cmp-cc"
+
+    const val CAMPAIGN_GOLD_SAUCER: String = "ac-cmp-gs"
 
     /** The `tripleTriadRules.as` constant, as `RULES_W` keys it. */
     private const val ROULETTE_KEY = "RULE_ROULETTE"

@@ -271,6 +271,37 @@ data class GameSave(
      * Rule constant to wins with it active. `RULES_W`, read by the Wheel-of-Fortune achievements.
      */
     @SerialName("RULES_W") val rulesWins: Map<String, Int> = emptyMap(),
+    /**
+     * The tournament under way, or null when there is none — which is the ordinary state.
+     *
+     * Not an AS3 field: the original's ladders held their position in a screen and lost it on the
+     * way out. **Owned by the server** ([withServerOwnedFrom]), because an open run is what waives
+     * the opponents' own stakes and multiplies their drops — see [CampaignRun].
+     */
+    @SerialName("CAMPAIGN_RUN") val campaignRun: CampaignRun? = null,
+    /**
+     * Tournaments won, keyed by `Campaign.key`, counting how often each was climbed to the top.
+     *
+     * The durable half of [campaignRun], which is cleared the moment a run resolves and so cannot
+     * answer "has this player ever finished the Card Club" — the question a ladder gated behind
+     * another one has to ask. Keyed like [npcWins] and for the same reason: the key is the thing's
+     * stable identity, not its position in a list.
+     *
+     * **Owned by the server**: it is what unlocks ladders and opponents.
+     */
+    @SerialName("CAMPAIGN_W") val campaignWins: Map<String, Int> = emptyMap(),
+    /**
+     * The last UTC day each tournament was entered on, as `YYYY-MM-DD`.
+     *
+     * One entry per ladder per day, which is what makes the fee a decision rather than a grind: a
+     * run that ends badly ends the day's attempt at *that* ladder, and the others stay open. Keyed
+     * by `Campaign.key` and holding a **day** rather than a count, so nobody banks yesterday's
+     * unused entries.
+     *
+     * The same key and the same 00:00 UTC boundary as [quests] — see [questDayOf]. **Owned by the
+     * server**, because a client writing this one would be choosing when tomorrow starts.
+     */
+    @SerialName("CAMPAIGN_DAY") val campaignEntries: Map<String, String> = emptyMap(),
 ) {
     /**
      * Matches begun and abandoned. `Save.as:59`, and the reason `STATS.FORFEITS` is not stored.
@@ -433,6 +464,40 @@ data class GameSave(
     fun withNpcWin(npcIconId: String): GameSave =
         copy(npcWins = npcWins + (npcIconId to (npcWins[npcIconId] ?: 0) + 1))
 
+    /** The run under way in [campaignKey], or null — including when the run is a different one. */
+    fun runIn(campaignKey: String): CampaignRun? =
+        campaignRun?.takeIf { it.campaignKey == campaignKey }
+
+    /**
+     * True once [campaignKey] has been entered on [day], which is what closes it until tomorrow.
+     *
+     * Asked of the day rather than of the run, because the two answer different questions: a run
+     * that ended in defeat five minutes ago is gone, and the entry it spent is not.
+     */
+    fun hasEnteredToday(campaignKey: String, day: String): Boolean =
+        campaignEntries[campaignKey] == day
+
+    /**
+     * Opens [run] and spends the day's entry for its ladder, in one step.
+     *
+     * The two are deliberately not separable. Stamping the day at *entry* rather than at resolution
+     * is the whole of the limit: a first-round defeat has to cost the attempt, and settling-time
+     * bookkeeping would only ever bite the players who won.
+     */
+    fun enteringCampaign(run: CampaignRun, day: String): GameSave = copy(
+        campaignRun = run,
+        campaignEntries = campaignEntries + (run.campaignKey to day),
+    )
+
+    /** Closes the run, whatever became of it. A defeat and a completion both end here. */
+    fun leavingCampaign(): GameSave = copy(campaignRun = null)
+
+    /** Records a ladder climbed to the top, and closes the run that climbed it. */
+    fun withCampaignWin(campaignKey: String): GameSave = copy(
+        campaignRun = null,
+        campaignWins = campaignWins + (campaignKey to (campaignWins[campaignKey] ?: 0) + 1),
+    )
+
     /**
      * Records a win with each of [rules]' active rules, for the Wheel-of-Fortune achievements.
      *
@@ -558,6 +623,9 @@ data class GameSave(
     fun withServerOwnedFrom(stored: GameSave): GameSave = copy(
         quests = stored.quests,
         achievements = stored.achievements,
+        campaignRun = stored.campaignRun,
+        campaignWins = stored.campaignWins,
+        campaignEntries = stored.campaignEntries,
         stats = stored.stats,
         mgp = stored.mgp,
         bag = stored.bag,

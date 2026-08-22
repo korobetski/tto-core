@@ -62,28 +62,71 @@ data class NpcCatalog(
      * exactly as it did. That is the right outcome by accident rather than by design, and it is
      * recorded here so a later pass that fills those numbers in knows it is turning a gate on.
      *
+     * ### The achievement gate, which the original does not have either
+     *
+     * One opponent carries [Npc.requiresAchievement] — see it for which, and why. It is a **door**
+     * rather than a clock or a weight class: unlike the hour and unlike the level, no amount of
+     * waiting or playing opens it. So it is counted apart, by [lockedByAchievement], and never
+     * folded into [lockedByLevel], whose sentence to the player promises the opposite.
+     *
+     * [earned] defaults to empty, which means *locked*. A caller that forgets to pass a profile
+     * therefore under-lists rather than over-lists, and the failure shows up as a missing opponent
+     * instead of a match the server refuses.
+     *
      * @param hour wall-clock hour, 0..23. Injected rather than read from a clock so the list is
      *   testable, which is the same reason nothing else in this module reads one.
      * @param level the character's level. See [com.tripletriad.model.GameSave.level].
+     * @param earned the achievement ids the character holds — `GameSave.achievements.keys`.
      */
-    fun available(formatId: String, hour: Int, level: Int): List<Npc> =
+    fun available(
+        formatId: String,
+        hour: Int,
+        level: Int,
+        earned: Set<String> = emptySet(),
+    ): List<Npc> =
         playing(formatId)
-            .filter { it.availability.isOpenAtHour(hour) && it.isOpenAtLevel(level) }
+            .filter {
+                it.availability.isOpenAtHour(hour) &&
+                    it.isOpenAtLevel(level) &&
+                    it.isEarnedBy(earned)
+            }
             .sortedWith(compareBy({ it.difficulty }, { it.matchFee }, { it.nameKey.lowercase() }))
 
     /**
-     * How many of [collection] are open at [hour] but held back by [level].
+     * How many of [formatId]'s opponents are open at [hour] but held back by [level].
      *
      * What the opponent list says under itself, so a filtered list reads as filtered rather than as
      * a short table. Counted over the same availability test as [available] — an opponent who is
      * simply not around at this hour is not "locked", and saying so would send the player looking
      * for a level that would not produce them.
+     *
+     * An opponent behind an achievement is not counted either, for the same reason and more
+     * sharply: levelling would never produce them.
      */
     fun lockedByLevel(formatId: String, hour: Int, level: Int): Int =
-        playing(formatId)
-            .count { it.availability.isOpenAtHour(hour) && !it.isOpenAtLevel(level) }
+        playing(formatId).count {
+            it.availability.isOpenAtHour(hour) && !it.isOpenAtLevel(level)
+        }
+
+    /**
+     * How many of [formatId]'s opponents are behind an achievement [earned] does not hold.
+     *
+     * Its own count rather than a share of [lockedByLevel]'s, because the two are different
+     * promises: one says "keep playing and they arrive", this one says "there is a thing to win
+     * first". Told apart in the data by [Npc.requiresAchievement] and told apart on screen by
+     * having its own line.
+     *
+     * The hour is not consulted. A door is shut whatever time it is, and an opponent who is both
+     * unearned and out of hours is better reported as unearned — that is the fact the player can
+     * act on.
+     */
+    fun lockedByAchievement(formatId: String, earned: Set<String>): Int =
+        playing(formatId).count { !it.isEarnedBy(earned) }
 
     private fun Npc.isOpenAtLevel(level: Int): Boolean = difficulty <= level + LEVEL_REACH
+
+    private fun Npc.isEarnedBy(earned: Set<String>): Boolean =
+        requiresAchievement?.let { it in earned } != false
 }
 
 /** How far above their own level a character may reach. See [NpcCatalog.available]. */

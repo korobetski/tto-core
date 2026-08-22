@@ -15,17 +15,35 @@ import kotlin.test.assertTrue
 class AchievementTest {
     @Test
     fun theCatalogueHasTheTwentyTwoAs3Achievements() {
-        assertEquals(22, AchievementCatalog.all.size)
+        // The AS3 22 are the ones *not* keyed on a tournament: the original recorded no ladder
+        // result at all, so a campaign requirement is by construction authored here. Counted this
+        // way rather than by total, so adding an authored achievement cannot quietly pass while a
+        // ported one goes missing.
+        val ported = AchievementCatalog.all.filterNot { it.requirement is Requirement.CampaignWins }
+        assertEquals(22, ported.size)
         assertEquals(
             AchievementCatalog.all.map { it.id }.distinct().size,
             AchievementCatalog.all.size,
             "ids must be unique — they are the save-file keys",
         )
         // `Achievements.list` (:16-39) and `LIST` (:45-72) are the same 22 ids in the same order.
-        assertEquals("ac-tt1", AchievementCatalog.all.first().id)
-        assertEquals("ac-fob", AchievementCatalog.all.last().id)
+        assertEquals("ac-tt1", ported.first().id)
+        assertEquals("ac-fob", ported.last().id)
         assertNotNull(AchievementCatalog["ac-wof6"])
         assertEquals(null, AchievementCatalog["ac-nope"])
+    }
+
+    @Test
+    fun theTournamentAchievementsAreEarnedByFinishingTheirLadder() {
+        val balamb = assertNotNull(AchievementCatalog[AchievementCatalog.CAMPAIGN_BALAMB])
+        val save = GameSave()
+
+        assertFalse(balamb.isEarnedBy(save), "a fresh profile has won nothing")
+        assertTrue(balamb.isEarnedBy(save.copy(campaignWins = mapOf("balamb" to 1))))
+        assertFalse(
+            balamb.isEarnedBy(save.copy(campaignWins = mapOf("cc" to 1))),
+            "another ladder's win must not open this one",
+        )
     }
 
     @Test

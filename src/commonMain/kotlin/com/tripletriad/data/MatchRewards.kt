@@ -58,6 +58,44 @@ data class MatchReward(
 data class MatchCredit(val save: GameSave, val reward: MatchReward)
 
 /**
+ * How a match's payout departs from the opponent's own table.
+ *
+ * [NONE] is every ordinary match, and it is the default, so the free-play economy is exactly
+ * what it was. Tournaments are what this exists for: a run boosts what its rungs drop and what
+ * they pay in XP, and it pays **nothing at all** for a rung that ended level.
+ *
+ * ### Why a drawn rung pays nothing
+ *
+ * A draw inside a run settles nothing — the rung is played again, as often as the player likes. A
+ * draw that paid would therefore be an unbounded source of MGP and XP for a player content to keep
+ * drawing, which is the one thing a tournament's entry fee is meant to price. So the round pays on
+ * resolution and only on resolution.
+ *
+ * The boons are not spent when [pays] is false, for the same reason: a boon is bought to multiply a
+ * payout, and multiplying nothing must not consume it.
+ *
+ * @property drop what the opponent's [ItemReward.rate]s are multiplied by. Bounded at 1 when
+ *   applied — a rate is a probability, and a doubled 0.6 is a certainty, not a 1.2.
+ * @property xp what the opponent's XP is multiplied by.
+ * @property pays whether this match pays MGP and XP at all.
+ */
+data class RewardBoost(
+    val drop: Double = 1.0,
+    val xp: Double = 1.0,
+    val pays: Boolean = true,
+) {
+    init {
+        require(drop >= 0.0) { "a drop multiplier cannot be negative: $drop" }
+        require(xp >= 0.0) { "an XP multiplier cannot be negative: $xp" }
+    }
+
+    companion object {
+        /** What an ordinary match is credited with: the opponent's table, unaltered. */
+        val NONE: RewardBoost = RewardBoost()
+    }
+}
+
+/**
  * End-of-match crediting — `PVEMatchScreen.endGame` (`:45-165`), as a pure function.
  *
  * The original is one 120-line method with the three results as three near-identical branches, each
@@ -108,6 +146,8 @@ object MatchRewards {
      * @param at epoch millis for the achievement timestamps.
      * @param random the MGP top-up and the drop table. Uniform, where the original's
      *   `Math.round(Math.random() * n)` gives half weight to 0 and to n.
+     * @param boost how a tournament run departs from [npc]'s own table. [RewardBoost.NONE] — the
+     *   default — is every match outside one, so free play is unaffected by its existing.
      */
     @Suppress("LongParameterList")
     fun credit(
@@ -117,14 +157,31 @@ object MatchRewards {
         rules: GameRules,
         at: Long,
         random: Random = Random.Default,
+        boost: RewardBoost = RewardBoost.NONE,
     ): MatchCredit {
-        val mgpBoon = save.boons.mgp > 0
-        val xpBoon = save.boons.xp > 0
+        // Read before the payout is worked out, and false when nothing is being paid: a boon
+        // multiplies a reward, so an unpaid match must not eat one. See [RewardBoost].
+        val mgpBoon = boost.pays && save.boons.mgp > 0
+        val xpBoon = boost.pays && save.boons.xp > 0
 
-        val baseMgp = npc.mgpFor(result)
-        val mgp = baseMgp + random.nextInt(bonusMax(result) + 1) + boost(baseMgp, mgpBoon)
-        val xp = npc.xpFor(result) + boost(npc.xpFor(result), xpBoon)
-        val items = if (result == MatchResult.WIN) npc.rollRewards(random) else emptyList()
+        val baseMgp = if (boost.pays) npc.mgpFor(result) else 0
+        val mgp = if (!boost.pays) {
+            0
+        } else {
+            baseMgp + random.nextInt(bonusMax(result) + 1) + boost(baseMgp, mgpBoon)
+        }
+        val baseXp = if (boost.pays) scaled(npc.xpFor(result), boost.xp) else 0
+        val xp = baseXp + boost(baseXp, xpBoon)
+
+        // The drop roll happens whether or not the match pays: a win is a win, and the run's own
+        // multiplier is what a tournament raises here. Rolled off the boosted table rather than
+        // re-rolled afterwards, so one draw per entry is consumed either way.
+        val items = if (result == MatchResult.WIN) {
+            npc.copy(itemRewards = npc.itemRewards.map { it.boostedBy(boost.drop) })
+                .rollRewards(random)
+        } else {
+            emptyList()
+        }
 
         var updated = save
             .endingMatch()
@@ -320,4 +377,8 @@ object MatchRewards {
 
     private fun boost(base: Int, active: Boolean): Int =
         if (active) (base * BOON_PERCENT / PERCENT.toDouble()).roundToInt() else 0
+
+    /** A multiplied payout, rounded rather than truncated so a ×1.5 of 5 is 8 and not 7. */
+    private fun scaled(base: Int, by: Double): Int =
+        if (by == 1.0) base else (base * by).roundToInt()
 }

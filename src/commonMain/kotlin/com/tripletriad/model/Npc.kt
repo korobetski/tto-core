@@ -121,6 +121,17 @@ data class ItemReward(
     @SerialName("potion") val potion: PotionType? = null,
     @SerialName("booster") val booster: BoosterType? = null,
 ) {
+    /**
+     * The same entry at a multiplied rate, **capped at certainty**.
+     *
+     * The cap is why this is a method rather than a `copy` at the call site: [rate] is
+     * compared against a uniform draw, so a doubled 0.6 has to become 1.0 and not 1.2. An uncapped
+     * 1.2 would still behave — `nextDouble()` never reaches it — which is exactly the sort of thing
+     * that stops behaving the day the comparison changes.
+     */
+    fun boostedBy(multiplier: Double): ItemReward =
+        if (multiplier == 1.0) this else copy(rate = (rate * multiplier).coerceAtMost(1.0))
+
     /** The [Item] this entry grants, or null if it names none this build understands. */
     fun item(): Item? = when (type) {
         "card" -> cardId?.let { CardItem(it) }
@@ -246,6 +257,26 @@ data class Npc(
     val itemRewards: List<ItemReward> = emptyList(),
     val difficulty: Int = 0,
     val availability: Availability = Availability.Always,
+    /**
+     * An achievement that must be held before this opponent can be challenged, or null.
+     *
+     * Null on every opponent the AS3 shipped, and that is not an accident of the port: the
+     * original's roster was gated by *nothing at all* — `PVEScreen` lists whoever the profile's
+     * `MODE` admits and whoever the hour allows, and that is the whole filter.
+     *
+     * The one opponent that carries a gate is the FFVIII Queen of Cards, who is what finishing the
+     * Card Club earns. Held as an achievement id rather than a campaign key so that anything
+     * awardable can unlock anything unlockable — the same decision, and the same wording, as
+     * `Campaign.requiresAchievement`.
+     *
+     * ### It is not [availability]
+     *
+     * They read alike and mean opposite things. An availability window is a **clock**: the opponent
+     * is there every night and the player waits. This is a **door**: it opens once, permanently,
+     * and no amount of waiting opens it. Folding the two together would make "come back at 8pm" and
+     * "win the Card Club" the same sentence to whoever renders the list.
+     */
+    val requiresAchievement: String? = null,
 ) {
     init {
         require(id > 0) { "npc id must be positive, was $id" }
@@ -321,6 +352,16 @@ data class Npc(
      * unused by the match screens and is not ported. The plural one can return several items or
      * none.
      */
+    /**
+     * Whether [save] has earned the right to challenge this opponent.
+     *
+     * True for all but one of them, [requiresAchievement] being null. Written the same way
+     * `Campaign.isUnlockedFor` is written, and deliberately so: a screen asking one of them should
+     * not have to ask the other differently.
+     */
+    fun isUnlockedFor(save: GameSave): Boolean =
+        requiresAchievement?.let(save::hasAchievement) != false
+
     fun rollRewards(random: Random = Random.Default): List<Item> =
         itemRewards.filter { random.nextDouble() < it.rate }.mapNotNull { it.item() }
 }
