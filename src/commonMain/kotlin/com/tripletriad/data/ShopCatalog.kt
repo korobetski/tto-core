@@ -75,9 +75,9 @@ object ShopCatalog {
     val ff8: List<ShopOffer> = listOf(
         ShopOffer(PotionItem(PotionType.MGP), price = 50),
         ShopOffer(PotionItem(PotionType.XP), price = 50),
-        ShopOffer(CardItem(544), price = 350),
-        ShopOffer(CardItem(549), price = 420),
-        ShopOffer(CardItem(557), price = 600),
+        ShopOffer(CardItem(2080), price = 350),
+        ShopOffer(CardItem(2085), price = 420),
+        ShopOffer(CardItem(2093), price = 600),
     )
 
     /**

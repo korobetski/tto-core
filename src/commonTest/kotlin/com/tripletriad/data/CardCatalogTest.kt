@@ -23,11 +23,11 @@ class CardCatalogTest {
     private val json = """
         {
           "sets": [
-            {"block": 1, "slug": "ff14", "nameKey": "APP_SET_FF14",
+            {"blocks": [1], "slug": "ff14", "nameKey": "APP_SET_FF14",
              "sortOrder": 1, "released": true},
-            {"block": 2, "slug": "ff8", "nameKey": "APP_SET_FF8",
+            {"blocks": [8], "slug": "ff8", "nameKey": "APP_SET_FF8",
              "sortOrder": 2, "released": true},
-            {"block": 9, "slug": "unreleased", "nameKey": "APP_SET_LATER",
+            {"blocks": [9], "slug": "unreleased", "nameKey": "APP_SET_LATER",
              "sortOrder": 9, "released": false}
           ],
           "cards": [
@@ -42,12 +42,12 @@ class CardCatalogTest {
               "rarity": 5, "type": "garlean"
             },
             {
-              "id": 513, "block": 2, "number": 1, "nameKey": "STR_FF8_CARD_1",
+              "id": 2049, "block": 8, "number": 1, "nameKey": "STR_FF8_CARD_1",
               "name": "Geezard", "top": 1, "right": 4, "bottom": 1, "left": 5,
               "rarity": 1, "type": null
             },
             {
-              "id": 518, "block": 2, "number": 6, "nameKey": "STR_FF8_CARD_6",
+              "id": 2054, "block": 8, "number": 6, "nameKey": "STR_FF8_CARD_6",
               "name": "Thrustaevis", "top": 2, "right": 1, "bottom": 4, "left": 4,
               "rarity": 1, "type": "lightning"
             }
@@ -60,7 +60,7 @@ class CardCatalogTest {
     @Test
     fun everySetIsParsedIntoOneCardList() {
         assertEquals(2, catalog.block(1).size)
-        assertEquals(2, catalog.block(2).size)
+        assertEquals(2, catalog.block(8).size)
         assertEquals(4, catalog.all.size)
         assertEquals(3, catalog.sets.size)
     }
@@ -99,7 +99,7 @@ class CardCatalogTest {
 
     @Test
     fun powersKeepTheAs3TopRightBottomLeftOrder() {
-        val geezard = catalog[513]!!
+        val geezard = catalog[2049]!!
         // cards.as: power:[1,4,1,5]
         assertEquals(1, geezard.top)
         assertEquals(4, geezard.right)
@@ -116,8 +116,8 @@ class CardCatalogTest {
     @Test
     fun typeCoversBothTheFf14TribesAndTheFf8Elements() {
         assertEquals(CardType.GARLEAN, catalog[320]!!.type)
-        assertEquals(CardType.LIGHTNING, catalog[518]!!.type)
-        assertNull(catalog[513]!!.type)
+        assertEquals(CardType.LIGHTNING, catalog[2054]!!.type)
+        assertNull(catalog[2049]!!.type)
     }
 
     @Test

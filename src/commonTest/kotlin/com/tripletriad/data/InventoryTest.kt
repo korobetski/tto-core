@@ -171,7 +171,7 @@ class InventoryTest {
         val used = Inventory.use(save, booster, Random(1))
 
         val opened = assertIs<ItemUse.PackOpened>(used)
-        assertEquals(BoosterType.BRONZE.size, opened.cardIds.size, "a pack holds several cards")
+        assertEquals(1, opened.cardIds.size, "a pack holds exactly one card")
         assertTrue(opened.cardIds.all { it in BoosterType.BRONZE.pool })
         assertEquals(0, Inventory.count(opened.save, booster), "the pack is consumed")
         for ((id, copies) in opened.cardIds.groupingBy { it }.eachCount()) {

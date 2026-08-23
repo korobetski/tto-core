@@ -142,8 +142,8 @@ data class FormatCatalog(val formats: List<Format>) {
      * than restated in whichever test happens to check it.
      */
     fun violations(sets: List<CardSet>): List<String> = buildList {
-        val known = sets.mapTo(mutableSetOf()) { it.block }
-        val released = sets.filter { it.released }.mapTo(mutableSetOf()) { it.block }
+        val known = sets.flatMapTo(mutableSetOf()) { it.blocks }
+        val released = sets.filter { it.released }.flatMapTo(mutableSetOf()) { it.blocks }
 
         val ids = formats.map { it.id }
         if (ids.size != ids.toSet().size) add("format ids are not unique: $ids")

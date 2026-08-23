@@ -2,8 +2,7 @@ package com.tripletriad.data
 
 import com.tripletriad.model.BoosterType
 import com.tripletriad.model.Card
-import kotlin.math.ln
-import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
@@ -17,24 +16,25 @@ import kotlin.math.roundToInt
  * did the arithmetic, and nobody could have kept doing it: the price of a pack changes every time a
  * card is added to its pool, and a number in a list does not know that.
  *
- * So a booster's price is **computed from its contents**. Change a pool, add a card, resize a pack,
- * and the shop reprices itself. The one thing authored anywhere is [CardValue.MGP_BY_RARITY] —
- * what a star is worth — which is a design decision and belongs in exactly one place.
+ * So a booster's price is **computed from its contents**. Change a pool, reweight a card, and the
+ * shop reprices itself. The one thing authored anywhere is [CardValue.MGP_BY_RARITY] — what a star
+ * is worth — which is a design decision and belongs in exactly one place.
  *
- * ### The draw distribution is exact, not sampled
+ * ### The draw distribution reads the pack's own [BoosterType.weights]
  *
- * `BoosterItem.open` picks an index as `min(round(u · v · 1.25 · last), last)` for two independent
- * uniforms, and the product of two uniforms has a closed form: `P(UV ≤ t) = t − t·ln t` on (0, 1].
- * So the whole distribution over pool indices comes out of [indexOdds] in a few multiplications —
- * no sampling, no seed, no number that drifts between runs. A Monte Carlo estimate would have been
- * easier to write and would have made the shop's prices depend on a random generator, which is the
- * kind of thing that is fine until somebody changes a library.
+ * A pack's odds used to come from one formula shared by every pack; now each [BoosterType] carries
+ * its own [BoosterType.weights], real drop-report numbers for the five real FFXIV packs and a
+ * frozen formula output for the rest — see that class's KDoc. [oddsOf] only normalises them (they
+ * are not required to already sum to 1), so pricing here and the draw in `BoosterItem.open` read
+ * the exact same numbers and cannot silently disagree about what a pack contains.
  *
  * ### The ladder, and one number it is deliberately not
  *
- * [CardValue.MGP_BY_RARITY] triples with each star, which is what makes a five-star pack cost real
- * money and a starter pack cost a couple of matches. Calibrated against the one authored price that
- * was plausible: the AS3 charges 520 for Bronze, and this gives 500.
+ * [CardValue.MGP_BY_RARITY] rises with each star, which is what makes a five-star pack cost real
+ * money and a starter pack cost a couple of matches. It is read backwards from
+ * arrtripletriad.com's own published card sale prices — see that property's KDoc — rather than
+ * calibrated against an AS3 shelf price, so a pack's cost is one step removed from a real number
+ * rather than an invented one.
  *
  * It is **not** `CardItem.value`, the game's sale price, which is `cardId * 4`. That was a rarity
  * proxy while ids were indices into one ascending table and stopped being one when ids went global:
@@ -48,72 +48,28 @@ object BoosterPricing {
     const val MARKUP: Double = 1.2
 
     /**
-     * The chance of drawing each index of a pool of [size], under `BoosterItem.open`'s draw.
+     * [type]'s [BoosterType.weights], normalised into a distribution that sums to 1.
      *
-     * `index = min(round(U · V · 1.25 · last), last)`, so with `X = U·V` scaled by `1.25 · last`:
-     * `P(index = k) = F((k + ½) / c) − F((k − ½) / c)` where `c = 1.25 · last` and `F` is the CDF
-     * of a product of two uniforms, `F(t) = t − t·ln t`, clamped to [0, 1]. The last index absorbs
-     * everything above it, which is what the `min` does.
-     *
-     * Returns a distribution summing to 1. A single-card pool is the degenerate case and returns
-     * `[1.0]` rather than dividing by a zero `last`.
-     *
-     * ### The second card is likelier than the first
-     *
-     * Worth knowing before reading a pool, because it looks like a bug. Rounding gives index 0 the
-     * half-width bin `[0, ½)` and index 1 a full-width `[½, 1½)`, so a pool's **second** entry
-     * comes out most often; the last index is the mirror image, absorbing everything that overshot.
-     * It is the same fault `docs/analysis/game-rules.md` § 15.6 records for the rule roulette, and
-     * it is reproduced for the same reason — it is the shipped drop rate.
+     * The weights themselves are authored per pack and are never required to already sum to
+     * anything in particular — a scraped drop-report percentage, an inverse-rarity ratio, and a
+     * frozen formula output all arrive at different scales, so this is where they all become
+     * comparable probabilities, in the same order as [BoosterType.pool].
      */
-    fun indexOdds(size: Int): List<Double> {
-        require(size > 0) { "a pool needs at least one card, had $size" }
-        if (size == 1) return listOf(1.0)
-
-        val last = size - 1
-        val scale = DOWNGRADE_CEILING * last
-        var below = 0.0
-        return List(size) { k ->
-            val upTo = if (k == last) 1.0 else productCdf((k + HALF) / scale)
-            (upTo - below).also { below = upTo }
-        }
-    }
+    fun oddsOf(type: BoosterType): List<Double> = oddsFor(type.weights)
 
     /**
-     * The chance a pack of [type] contains at least one five-star card.
+     * The chance a pack of [type] draws a five-star card.
      *
      * What the shop shows next to the price, and the only honest way to sell a gamble: a pack that
-     * says "five cards" and nothing else is asking the player to guess its odds, and they will
+     * says only "one card" and nothing else is asking the player to guess its odds, and they will
      * guess wrong in whichever direction disappoints them.
-     *
-     * Computed as `1 − P(no slot is a five-star)` across the [BoosterType.size] − 1 ordinary slots
-     * and the guaranteed one, which are independent draws.
      */
-    fun fiveStarChance(type: BoosterType, cards: Map<Int, Card>): Double {
-        val ordinary = 1.0 - chanceOfFiveStar(type.pool, cards)
-        val guaranteed = 1.0 - chanceOfFiveStar(type.pool.drop(type.rareFrom), cards)
-        var none = guaranteed
-        repeat(type.size - 1) { none *= ordinary }
-        return 1.0 - none
-    }
-
-    /**
-     * The lowest star count the guaranteed slot can produce — what the pack may advertise.
-     *
-     * Per pack rather than one global claim, because the shipped pools do not support a global one:
-     * Bronze's whole pool tops out at three stars and its guaranteed range holds a two, so a shelf
-     * saying "every pack guarantees a three-star" would be lying about two of its rows. Derived, so
-     * it cannot lie about any of them.
-     */
-    fun guaranteedFloor(type: BoosterType, cards: Map<Int, Card>): Int =
-        type.pool.drop(type.rareFrom).minOf { cards[it]?.rarity ?: 1 }
+    fun fiveStarChance(type: BoosterType, cards: Map<Int, Card>): Double =
+        chanceOfFiveStar(type, cards)
 
     /** What a pack of [type] is expected to be worth, in MGP, before the shop's [MARKUP]. */
-    fun expectedValue(type: BoosterType, cards: Map<Int, Card>): Double {
-        val ordinary = expectedValueOf(type.pool, cards)
-        val guaranteed = expectedValueOf(type.pool.drop(type.rareFrom), cards)
-        return ordinary * (type.size - 1) + guaranteed
-    }
+    fun expectedValue(type: BoosterType, cards: Map<Int, Card>): Double =
+        expectedValueOf(type, cards)
 
     /**
      * What the shop charges for a pack of [type], rounded to the nearest ten.
@@ -126,25 +82,60 @@ object BoosterPricing {
         return ((raw / ROUND_TO).roundToInt() * ROUND_TO).coerceAtLeast(ROUND_TO)
     }
 
-    private fun expectedValueOf(pool: List<Int>, cards: Map<Int, Card>): Double =
-        indexOdds(
-            pool.size,
-        ).withIndex().sumOf { (index, odds) -> odds * worthOf(pool[index], cards) }
+    private fun expectedValueOf(type: BoosterType, cards: Map<Int, Card>): Double =
+        expectedValueFor(type.pool, type.weights, type.cardCount, cards)
 
-    private fun chanceOfFiveStar(pool: List<Int>, cards: Map<Int, Card>): Double =
-        indexOdds(pool.size).withIndex().sumOf { (index, odds) ->
-            if (cards[pool[index]]?.rarity == TOP_RARITY) odds else 0.0
+    private fun chanceOfFiveStar(type: BoosterType, cards: Map<Int, Card>): Double =
+        fiveStarChanceFor(type.pool, type.weights, type.cardCount, cards)
+
+    /**
+     * [expectedValueOf], as a pure function of a pool and its weights.
+     *
+     * Draws are independent, so [count] cards are worth [count] times what one is — the reason
+     * this is split out from [expectedValueOf] rather than inlined is so a `cardCount` above the 1
+     * every shipped pack uses today can be exercised in a test without a shipped multi-card pack to
+     * carry it.
+     */
+    internal fun expectedValueFor(
+        pool: List<Int>,
+        weights: List<Double>,
+        count: Int,
+        cards: Map<Int, Card>,
+    ): Double {
+        val odds = oddsFor(weights)
+        val perDraw = odds.withIndex().sumOf { (index, odd) -> odd * worthOf(pool[index], cards) }
+        return count * perDraw
+    }
+
+    /**
+     * [chanceOfFiveStar], as a pure function of a pool and its weights.
+     *
+     * Not `count * perDrawChance`: that overshoots past 1 once a pack draws enough cards at a high
+     * enough rate, because it does not account for a pack landing a five-star on more than one of
+     * its draws. The right question for a shop line is "does this pack contain at least one
+     * five-star", which is `1 - P(none of the count draws is one)` — `1 - (1 - perDraw)^count`.
+     * At `count == 1` this is exactly `perDraw`, so every shipped pack is unaffected.
+     */
+    internal fun fiveStarChanceFor(
+        pool: List<Int>,
+        weights: List<Double>,
+        count: Int,
+        cards: Map<Int, Card>,
+    ): Double {
+        val perDraw = oddsFor(weights).withIndex().sumOf { (index, odd) ->
+            if (cards[pool[index]]?.rarity == TOP_RARITY) odd else 0.0
         }
+        return 1.0 - (1.0 - perDraw).pow(count)
+    }
+
+    private fun oddsFor(weights: List<Double>): List<Double> {
+        val total = weights.sum()
+        return weights.map { it / total }
+    }
 
     private fun worthOf(cardId: Int, cards: Map<Int, Card>): Int =
         CardValue.worthOf(cardId, cards)
 
-    /** `F(t) = t − t·ln t`, the CDF of a product of two independent uniforms, clamped to [0, 1]. */
-    private fun productCdf(t: Double): Double =
-        if (t <= 0.0) 0.0 else min(1.0, t - t * ln(t))
-
-    private const val DOWNGRADE_CEILING = 1.25
-    private const val HALF = 0.5
     private const val TOP_RARITY = 5
     private const val ROUND_TO = 10
 }

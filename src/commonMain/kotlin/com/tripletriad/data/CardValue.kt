@@ -6,26 +6,6 @@ import kotlin.math.roundToInt
 /**
  * What a card is worth, and what a shop will pay for it.
  *
- * ### The bug this replaces
- *
- * `CardItem.as:25` prices a card at `value = _cardId * 4`, and it worked: an AS3 id was an index
- * into one table written weakest-first, so a bigger number really did mean a better card.
- *
- * Global ids destroyed that and nothing noticed. An id is `(block shl 8) or number` now, so the
- * *block* dominates the arithmetic — FFVIII's Tonberry, a one-star common with id 544, "sold" for
- * 2 176 MGP while Cloud Strife, a five-star with id 330, sold for 1 320. Worse, the shop sells that
- * Tonberry for **350**:
- *
- * ```
- * id 258  ★1  buy    120   sell 1 032     Tonberry (FFXIV)
- * id 544  ★1  buy    350   sell 2 176     Tonberry (FFVIII)
- * id 269  ★1  buy    150   sell 1 076     Chocobo
- * ```
- *
- * Every cheap row on the shelf was a money printer, and so was every booster: a 500 MGP Bronze pack
- * held five cards resellable for about five thousand. Not a balance problem — an unbounded loop
- * that makes MGP, and therefore the whole shop, mean nothing.
- *
  * ### One ladder, read two ways
  *
  * [MGP_BY_RARITY] is what a card is *worth*. [BoosterPricing] integrates it over a pool to price a
@@ -40,7 +20,7 @@ import kotlin.math.roundToInt
  * as long as resale is below the cheapest way to acquire a card, no sequence of purchases and sales
  * makes money, and `CardValueTest` asserts exactly that against the shipped shelf.
  *
- * Selling is still worth doing — a duplicate five-star returns 1 320 MGP, five matches' worth —
+ * Selling is still worth doing — a duplicate five-star returns 1 500 MGP, several matches' worth —
  * which is what the feature is for. It is a way to turn cards you will not play into cards you
  * will, not a second income.
  */
@@ -48,16 +28,18 @@ object CardValue {
     /**
      * What one card of each star count is worth, in MGP.
      *
-     * The single authored economic ladder. Roughly triple per star, which matches how the table is
-     * shaped — eleven five-stars against a hundred and fifty-three FFXIV cards — and how a player
-     * experiences the difference. Calibrated against the one AS3 price that was plausible: it makes
-     * a Bronze pack cost 500 where the original charged 520.
+     * The single authored economic ladder. Set so that [resaleOf] — worth times [RESALE_RATE] —
+     * lands exactly on arrtripletriad.com's own published "sells for" price per rarity (100 / 300 /
+     * 500 / 800 / 1 500 MGP, scraped from the individual card pages of the real FFXIV Triple Triad
+     * trader, one value per star and no exceptions across 142 sampled cards). Worth is therefore
+     * `sale price / RESALE_RATE`, so this is a real-game number read backwards through the shop's
+     * markup rather than an invented ladder.
      *
      * Lives here rather than in [BoosterPricing] because pack pricing is one *reader* of it and
      * resale is another. Putting it in either would make the other look derived from packs, or from
      * selling, when both are derived from worth.
      */
-    val MGP_BY_RARITY: Map<Int, Int> = mapOf(1 to 40, 2 to 120, 3 to 360, 4 to 1_100, 5 to 3_300)
+    val MGP_BY_RARITY: Map<Int, Int> = mapOf(1 to 250, 2 to 750, 3 to 1_250, 4 to 2_000, 5 to 3_750)
 
     /** What a shop pays, as a fraction of worth. This object's KDoc says why it is well under 1. */
     const val RESALE_RATE: Double = 0.4

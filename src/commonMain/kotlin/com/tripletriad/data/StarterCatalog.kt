@@ -63,7 +63,7 @@ data class StarterCatalog(val starters: List<Starter>) {
      * unreleased set cannot be opened by the one door that does not go through the shop.
      */
     fun released(sets: List<CardSet>): List<Starter> {
-        val open = sets.filter { it.released }.mapTo(mutableSetOf()) { it.block }
+        val open = sets.filter { it.released }.flatMapTo(mutableSetOf()) { it.blocks }
         return starters.filter { it.block in open }
     }
 
@@ -98,9 +98,12 @@ data class StarterCatalog(val starters: List<Starter>) {
             addAll(starter.compositionProblems(held))
         }
 
+        // A *set* needs a starter, not each of its blocks: a set spanning two blocks is one
+        // collection to the player and opens with one box, whose ten cards all sit in whichever
+        // block holds the set's commons.
         val opened = starters.mapTo(mutableSetOf()) { it.block }
         for (set in sets.filter { it.released }) {
-            if (set.block !in opened) {
+            if (set.blocks.none { it in opened }) {
                 add("set ${set.slug} is released and has no starter")
             }
         }

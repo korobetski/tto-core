@@ -131,8 +131,20 @@ class StarterPackTest {
     @Test
     fun anUnreleasedSetIsNotOnOffer() {
         val sets = listOf(
-            CardSet(block = 1, slug = "ff14", nameKey = "A", sortOrder = 1, released = true),
-            CardSet(block = 2, slug = "ff8", nameKey = "B", sortOrder = 2, released = false),
+            CardSet(
+                blocks = listOf(1),
+                slug = "ff14",
+                nameKey = "A",
+                sortOrder = 1,
+                released = true,
+            ),
+            CardSet(
+                blocks = listOf(8),
+                slug = "ff8",
+                nameKey = "B",
+                sortOrder = 2,
+                released = false,
+            ),
         )
 
         assertEquals(listOf(ff14.id), catalog.released(sets).map { it.id })

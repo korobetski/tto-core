@@ -168,18 +168,49 @@ class ItemTest {
         }
     }
 
+    /**
+     * No shipped [BoosterType] draws more than one card today — see that class's KDoc — but
+     * [drawCards], the function [BoosterItem.open] delegates to, is kept general on purpose: a
+     * future pack drawing several cards should not need this mechanism rewritten, only a
+     * `cardCount` above 1. This pins the shape such a pack could rely on directly, independent of
+     * any shipped [BoosterType].
+     */
     @Test
-    fun openingABoosterAlwaysYieldsACardFromItsOwnPool() {
+    fun theDrawCanBeAskedForSeveralCardsAtOnce() {
+        val pool = listOf(1, 2, 3)
+        val weights = listOf(1.0, 1.0, 1.0)
+
+        val drawn = drawCards(pool, weights, count = FIVE, Random(3))
+
+        assertEquals(FIVE, drawn.size, "asked for $FIVE cards")
+        assertTrue(drawn.all { it in pool }, "every card must come from the pool: $drawn")
+    }
+
+    @Test
+    fun theDrawAllowsDuplicatesAcrossSeveralCards() {
+        val pool = listOf(9)
+        val weights = listOf(1.0)
+
+        val drawn = drawCards(pool, weights, count = FIVE, Random(1))
+
+        assertEquals(List(FIVE) { 9 }, drawn, "a one-card pool can only ever repeat")
+    }
+
+    @Test
+    fun aBoosterTypeCannotDrawFewerThanOneCard() {
+        // No enum entry can be constructed with a bad cardCount directly — this pins the guard on
+        // the general path instead, the same way `drawCards`'s own tests do.
+        assertTrue(BoosterType.entries.all { it.cardCount >= 1 })
+    }
+
+    @Test
+    fun openingABoosterAlwaysYieldsExactlyOneCardFromItsOwnPool() {
         for (type in BoosterType.entries) {
             val booster = BoosterItem(type)
             repeat(200) { seed ->
                 val drawn = booster.open(Random(seed))
-                assertEquals(type.size, drawn.size, "$type should deal ${type.size} cards")
+                assertEquals(1, drawn.size, "$type should deal exactly one card")
                 assertTrue(drawn.all { it in type.pool }, "$type drew $drawn, outside ${type.pool}")
-                assertTrue(
-                    drawn.last() in type.pool.drop(type.rareFrom),
-                    "$type must guarantee its last slot, drew ${drawn.last()}",
-                )
             }
         }
     }
@@ -193,9 +224,7 @@ class ItemTest {
     fun theBoosterDrawIsBiasedTowardsTheStartOfThePool() {
         val booster = BoosterItem(BoosterType.BEAST)
         val pool = BoosterType.BEAST.pool
-        // The ordinary slots only: the guaranteed one draws from the top of the pool by design,
-        // and including it would be measuring the guarantee rather than the bias.
-        val draws = (0 until 4_000).flatMap { booster.open(Random(it)).dropLast(1) }
+        val draws = (0 until 4_000).flatMap { booster.open(Random(it)) }
 
         val firstThird = draws.count { pool.indexOf(it) < pool.size / 3 }
         assertTrue(
@@ -245,5 +274,9 @@ class ItemTest {
         // A type this build does not understand yields nothing rather than throwing.
         assertEquals(null, ItemReward("accessory", 1.0).item())
         assertEquals(null, ItemReward("card", 1.0).item())
+    }
+
+    private companion object {
+        const val FIVE = 5
     }
 }

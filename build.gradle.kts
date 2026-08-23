@@ -18,7 +18,6 @@
 // The two functions that read the catalogs out of the Compose resource bundle stayed in the
 // client's `:shared` (see `CatalogLoaders.kt`); the parsers they call are here.
 //
-// See ../AS3-Triple-Triad/docs/migration/09-PHASE-5-NETWORK.md § Two prerequisites.
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidKmpLibrary)
@@ -44,7 +43,7 @@ group = "com.tripletriad"
 // It has to be raised as the release it is heading towards, not left behind: a default two releases
 // under what the consumers pin publishes a local artifact nothing resolves, and the comment above
 // then describes a loop that does not work.
-version = providers.gradleProperty("coreVersion").getOrElse("0.7.7")
+version = providers.gradleProperty("coreVersion").getOrElse("0.7.8")
 
 kotlin {
     // 17, matching `:shared`. The server runs 21 and consumes this happily; the reverse would not

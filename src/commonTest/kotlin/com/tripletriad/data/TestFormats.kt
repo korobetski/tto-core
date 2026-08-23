@@ -13,9 +13,14 @@ package com.tripletriad.data
  * rather than read from `npcs.json`.
  */
 internal object TestFormats {
-    /** The two shipped blocks. `CardCollection` used to name them; a block is just an integer. */
+    /**
+     * The two shipped blocks. `CardCollection` used to name them; a block is just an integer.
+     *
+     * FFVIII sits at 8 rather than 2 so that FFXIV, which has 454 cards and therefore needs two
+     * blocks, can grow contiguously from 1 without ever colliding with it — see [CardSet].
+     */
     const val FF14_BLOCK: Int = 1
-    const val FF8_BLOCK: Int = 2
+    const val FF8_BLOCK: Int = 8
 
     val ff14: Format = Format(
         id = "ff14-standard",

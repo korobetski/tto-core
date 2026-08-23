@@ -369,9 +369,11 @@ class CampaignRewardsTest {
         const val TODAY = "2023-11-14"
         const val TOMORROW = "2023-11-15"
         const val FEE = 200
-        const val CARD = 513
-        const val PRIZE = 527
-        const val RARE = 541
+
+        // FFVIII cards, which live in block 8 now — see `CardSet`.
+        const val CARD = 2049
+        const val PRIZE = 2063
+        const val RARE = 2077
         const val SEEDS = 200
     }
 }

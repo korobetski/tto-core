@@ -2,8 +2,6 @@ package com.tripletriad.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
@@ -84,7 +82,8 @@ enum class PotionType(val modifier: BoonModifier) {
 }
 
 /**
- * The booster packs, each with its fixed card pool and its size.
+ * The booster packs, each with its fixed card pool and the per-card weight [BoosterItem.open]
+ * draws from.
  *
  * ### The nine FFXIV packs
  *
@@ -119,126 +118,240 @@ enum class PotionType(val modifier: BoonModifier) {
  *
  * ### What a pack holds
  *
- * [size] cards, not one. The AS3 pack was a single draw — you paid 520 MGP, you got one card, and
- * whether it was worth it was decided before the animation finished. A pack is a ritual in every
- * game that sells one, and a ritual needs more than one beat.
+ * **One card, by default.** The AS3 pack was a single draw — you paid 520 MGP, you got one card,
+ * and whether it was worth it was decided before the animation finished — and so is the real
+ * game's: every "Triad Card" sold by the Manderville Gold Saucer's Triple Triad Trader hands over
+ * exactly one random card from its pool, never several. Every pack shipped today draws
+ * [cardCount] `1` for exactly that reason. See [BoosterItem.open].
  *
- * The last card is **always** drawn from the top of the pool ([rareFrom] onwards), which is the
- * mechanic that makes opening one worth doing: the first cards are what you expected and the last
- * is the question. See [BoosterItem.open].
+ * [cardCount] itself is not pinned to 1 — a pack that draws several cards is a mechanic this game
+ * has had before (the old AS3-era "several ordinary draws plus one guaranteed-rarity draw" packs)
+ * and may have again, so the capacity to draw more than one card independently stays general
+ * rather than being deleted along with the formula that used to compute it.
+ *
+ * ### [weights]: authored, not computed
+ *
+ * Used to be a formula — two uniform draws multiplied, biased hard toward the front of the pool —
+ * applied identically to every pack. [BRONZE], [SILVER], [GOLD], [MITHRIL] and [PLATINUM] are real
+ * FFXIV packs, and arrtripletriad.com publishes the community-reported chance of drawing each of
+ * their cards, so those five now carry the **real numbers** instead:
+ *
+ * - Where the site reports a rate for a card in this project's (smaller) pool, that rate is used
+ *   as-is — [weights] need not sum to any particular total, only their *ratio* matters, so a pool
+ *   that is a strict subset of the site's own renormalises itself for free the moment
+ *   [BoosterItem.open] or [BoosterPricing] divides by the sum.
+ * - Where the site has no report at all for a card in the pool — every entry of [PLATINUM], the
+ *   most expensive pack, whose own drop reports are all still `?%` — the weight is derived from
+ *   [CardValue.MGP_BY_RARITY] instead, inverted (a cheaper rarity is a commoner card) and left
+ *   unnormalised for the same reason: three 4★ cards at weight 15 and five 5★ at weight 8 is the
+ *   ratio `1/2000 : 1/3750` reduced to whole numbers.
+ *
+ * [BEAST], [PRIMAL], [SCION], [GARLEAN] and the six FFVIII packs are not real packs — no site
+ * documents them, because they do not exist outside this game — so their weights are simply the
+ * *old* formula's output, computed once and frozen as data rather than recomputed every draw. The
+ * shape a player already knows does not change; only where the numbers live does.
  */
 @Serializable
 enum class BoosterType(
     val pool: List<Int>,
+    val weights: List<Double>,
     val iconId: String,
-    val size: Int = BOOSTER_STANDARD_SIZE,
+    /** How many cards one pack draws. `1` for every pack currently sold — see the class doc. */
+    val cardCount: Int = 1,
 ) {
+    /** Real FFXIV rates (arrtripletriad.com), renormalised to this pool's own six cards. */
     @SerialName("BRONZE_BOOSTER")
-    BRONZE(listOf(260, 261, 264, 268, 283, 294), PACK_ICON),
+    BRONZE(
+        pool = listOf(260, 261, 264, 268, 283, 294),
+        weights = listOf(16.67, 20.0, 6.67, 3.33, 10.0, 13.33),
+        iconId = PACK_ICON,
+    ),
 
+    /** Real FFXIV rates, renormalised to this pool's own eight cards. */
     @SerialName("SILVER_BOOSTER")
-    SILVER(listOf(270, 271, 272, 273, 275, 306, 312, 313), PACK_ICON),
+    SILVER(
+        pool = listOf(270, 271, 272, 273, 275, 306, 312, 313),
+        weights = listOf(14.29, 15.24, 20.0, 21.9, 11.43, 12.38, 0.95, 3.81),
+        iconId = PACK_ICON,
+    ),
 
+    /** Real FFXIV rates, renormalised to this pool's own eight cards. */
     @SerialName("GOLD_BOOSTER")
-    GOLD(listOf(284, 285, 286, 290, 307, 314, 324, 332), PACK_ICON),
+    GOLD(
+        pool = listOf(284, 285, 286, 290, 307, 314, 324, 332),
+        weights = listOf(22.58, 22.55, 11.99, 19.84, 4.83, 5.11, 0.32, 0.55),
+        iconId = PACK_ICON,
+    ),
 
+    /** Real FFXIV rates. The one pack whose full site pool matches this one card for card. */
     @SerialName("MITHRIL_BOOSTER")
-    MITHRIL(listOf(295, 364, 365, 369, 379, 308, 326, 328, 329), PACK_ICON),
+    MITHRIL(
+        pool = listOf(295, 364, 365, 369, 379, 308, 326, 328, 329),
+        weights = listOf(14.63, 4.88, 31.71, 14.63, 4.88, 21.95, 2.44, 2.44, 2.44),
+        iconId = PACK_ICON,
+    ),
 
+    /** No site report exists for any of these eight — see the class doc's rarity fallback. */
     @SerialName("PLATINUM_BOOSTER")
-    PLATINUM(listOf(307, 311, 313, 319, 325, 327, 333, 336), PACK_ICON),
+    PLATINUM(
+        pool = listOf(307, 311, 313, 319, 325, 327, 333, 336),
+        weights = listOf(15.0, 15.0, 15.0, 8.0, 8.0, 8.0, 8.0, 8.0),
+        iconId = PACK_ICON,
+    ),
 
+    /** Not a real pack — frozen output of the old front-loaded formula. */
     @SerialName("BEAST_BOOSTER")
-    BEAST(listOf(270, 271, 272, 273, 274, 283, 291, 292, 293, 338, 339, 373, 384), "beast_booster"),
+    BEAST(
+        pool = listOf(270, 271, 272, 273, 274, 283, 291, 292, 293, 338, 339, 373, 384),
+        weights = listOf(
+            0.14671, 0.18355, 0.13503, 0.10761, 0.08829,
+            0.07335, 0.06116, 0.05087, 0.04195, 0.03409,
+            0.02706, 0.0207, 0.02963,
+        ),
+        iconId = "beast_booster",
+    ),
 
+    /** Not a real pack — frozen output of the old front-loaded formula. */
     @SerialName("PRIMAL_BOOSTER")
-    PRIMAL(listOf(296, 297, 298, 299, 308, 309, 310, 311, 317, 353, 354, 393), "primal_booster"),
+    PRIMAL(
+        pool = listOf(296, 297, 298, 299, 308, 309, 310, 311, 317, 353, 354, 393),
+        weights = listOf(
+            0.15688, 0.19391, 0.14098, 0.11106,
+            0.08999, 0.07369, 0.0604, 0.04916,
+            0.03944, 0.03086, 0.02319, 0.03044,
+        ),
+        iconId = "primal_booster",
+    ),
 
+    /** Not a real pack — frozen output of the old front-loaded formula. */
     @SerialName("SCION_BOOSTER")
-    SCION(listOf(275, 378, 302, 304, 305, 306, 312, 315, 316, 394), "scion_booster"),
+    SCION(
+        pool = listOf(275, 378, 302, 304, 305, 306, 312, 315, 316, 394),
+        weights = listOf(
+            0.18282, 0.21916, 0.15447, 0.1179, 0.09215,
+            0.07223, 0.05598, 0.04225, 0.03036, 0.03266,
+        ),
+        iconId = "scion_booster",
+    ),
 
+    /** Not a real pack — frozen output of the old front-loaded formula. */
     @SerialName("GARLEAN_BOOSTER")
-    GARLEAN(listOf(287, 288, 303, 307, 320, 375), "garlean_booster"),
+    GARLEAN(
+        pool = listOf(287, 288, 303, 307, 320, 375),
+        weights = listOf(0.28206, 0.30045, 0.18401, 0.11818, 0.07182, 0.04348),
+        iconId = "garlean_booster",
+    ),
 
     /**
      * Galbadia's army: two robots, two soldiers, and the machines sent after Squall's party.
      *
-     * Written weakest-first like every pool above, so [BoosterItem.open]'s bias reads the same way.
+     * Written weakest-first like every pool above, so the frozen weights' bias reads the same way.
+     * Not a real pack — frozen output of the old front-loaded formula.
      */
     @SerialName("GALBADIAN_BOOSTER")
     GALBADIAN(
-        listOf(561, 562, 567, 568, 569, 573, 575, 570, 583, 586),
-        PACK_ICON,
+        pool = listOf(2097, 2098, 2103, 2104, 2105, 2109, 2111, 2106, 2119, 2122),
+        weights = listOf(
+            0.18282, 0.21916, 0.15447, 0.1179, 0.09215,
+            0.07223, 0.05598, 0.04225, 0.03036, 0.03266,
+        ),
+        iconId = PACK_ICON,
     ),
 
-    /** The sixteen Guardian Forces, Eden last: the strongest cards in the set bar the cast. */
+    /**
+     * The sixteen Guardian Forces, Eden last: the strongest cards in the set bar the cast.
+     *
+     * Not a real pack — frozen output of the old front-loaded formula.
+     */
     @SerialName("GUARDIAN_FORCE_BOOSTER")
     GUARDIAN_FORCE(
-        listOf(595, 596, 597, 598, 599, 600, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611),
-        PACK_ICON,
-        size = BOOSTER_PREMIUM_SIZE,
+        pool = listOf(
+            2131, 2132, 2133, 2134, 2135, 2136, 2137, 2138, 2139,
+            2140, 2141, 2142, 2143, 2144, 2145, 2146, 2147,
+        ),
+        weights = listOf(
+            0.11722, 0.15205, 0.11566, 0.09509, 0.0806, 0.0694, 0.06026, 0.05253, 0.04585,
+            0.03995, 0.03468, 0.02991, 0.02556, 0.02155, 0.01784, 0.01439, 0.02746,
+        ),
+        iconId = PACK_ICON,
     ),
 
     /**
      * The bestiary: what a player fights before they fight anybody.
      *
      * Levels 1 and 2, and the cheapest thing on either shelf — the FFVIII answer to Bronze, which
-     * a new character can afford after three or four matches.
+     * a new character can afford after three or four matches. Not a real pack — frozen output of
+     * the old front-loaded formula.
      */
     @SerialName("MONSTER_BOOSTER")
     MONSTER(
-        listOf(513, 515, 518, 522, 527, 531, 544, 546, 548, 552, 558, 564),
-        PACK_ICON,
+        pool = listOf(2049, 2051, 2054, 2058, 2063, 2067, 2080, 2082, 2084, 2088, 2094, 2100),
+        weights = listOf(
+            0.15688, 0.19391, 0.14098, 0.11106,
+            0.08999, 0.07369, 0.0604, 0.04916,
+            0.03944, 0.03086, 0.02319, 0.03044,
+        ),
+        iconId = PACK_ICON,
     ),
 
     /**
      * The bosses of levels 5 to 7 — the fights, rather than the wildlife or the army.
      *
      * Deliberately overlapping [GALBADIAN] on nothing: Galbadia's machines are its own pack, and a
-     * player buying both should be buying two different things.
+     * player buying both should be buying two different things. Not a real pack — frozen output of
+     * the old front-loaded formula.
      */
     @SerialName("FIEND_BOOSTER")
     FIEND(
-        listOf(571, 572, 574, 576, 577, 578, 579, 580, 581, 582, 584, 585, 587, 588, 589),
-        PACK_ICON,
+        pool = listOf(
+            2107, 2108, 2110, 2112, 2113, 2114, 2115,
+            2116, 2117, 2118, 2120, 2121, 2123, 2124, 2125,
+        ),
+        weights = listOf(
+            0.13015, 0.16614, 0.12455, 0.10104, 0.08449, 0.07168, 0.06123, 0.05241,
+            0.04477, 0.03803, 0.032, 0.02655, 0.02158, 0.017, 0.02838,
+        ),
+        iconId = PACK_ICON,
     ),
 
     /**
      * The five level-8 companions: Chubby Chocobo, Angelo, Gilgamesh, Mini Mog and Chicobo.
      *
      * The cards [GUARDIAN_FORCE] leaves out, and the reason it does — they sit at level 8 with the
-     * GFs' rarity and none of their standing. A five-card pool is the smallest that ships, so this
-     * is the one pack where the guaranteed slot is nearly the whole of it.
+     * GFs' rarity and none of their standing. Not a real pack — frozen output of the old
+     * front-loaded formula.
      */
     @SerialName("COMPANION_BOOSTER")
     COMPANION(
-        listOf(590, 591, 592, 593, 594),
-        PACK_ICON,
-        size = BOOSTER_PREMIUM_SIZE,
+        pool = listOf(2126, 2127, 2128, 2129, 2130),
+        weights = listOf(0.33026, 0.33093, 0.18538, 0.1031, 0.05033),
+        iconId = PACK_ICON,
     ),
 
-    /** The eleven level-10 cards. Squall last, because there is nothing above him. */
+    /**
+     * The eleven level-10 cards. Squall last, because there is nothing above him. Not a real
+     * pack — frozen output of the old front-loaded formula.
+     */
     @SerialName("CHARACTER_BOOSTER")
     CHARACTER(
-        listOf(612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622),
-        PACK_ICON,
-        size = BOOSTER_PREMIUM_SIZE,
+        pool = listOf(2148, 2149, 2150, 2151, 2152, 2153, 2154, 2155, 2156, 2157, 2158),
+        weights = listOf(
+            0.16876, 0.20568, 0.14746, 0.11454,
+            0.09136, 0.07344, 0.05881, 0.04645,
+            0.03576, 0.02632, 0.03143,
+        ),
+        iconId = PACK_ICON,
     ),
     ;
 
     init {
-        require(size in 1..pool.size) { "$name holds $size cards from a pool of ${pool.size}" }
+        require(pool.isNotEmpty()) { "$name has no pool to draw from" }
+        require(pool.size == weights.size) {
+            "$name has ${pool.size} cards but ${weights.size} weights"
+        }
+        require(weights.all { it > 0.0 }) { "$name has a non-positive weight: $weights" }
+        require(cardCount >= 1) { "$name draws $cardCount cards, must draw at least one" }
     }
-
-    /**
-     * Where the guaranteed slot starts drawing from — the top third of the pool, rounded up.
-     *
-     * A third rather than a fixed count so it scales with the pool: the six-card Bronze pack
-     * guarantees one of its best two, the seventeen-card Guardian Force pack one of its best six.
-     * Fixing it at "the last two" would make a long pool's guarantee vanishingly narrow and a short
-     * pool's guarantee cover a third of it.
-     */
-    val rareFrom: Int get() = pool.size - ((pool.size + 2) / 3)
 
     /** `BoosterItem.as:49` — `i18n.gettext('STR_' + _boosterType)`. */
     val nameKey: String get() = "STR_$as3Name"
@@ -247,21 +360,7 @@ enum class BoosterType(
     val descriptionKey: String get() = "APP_${as3Name}_DESC"
 
     private val as3Name: String get() = "${name}_BOOSTER"
-
-    companion object {
-        /** What an ordinary pack holds. Five is a hand, which is the unit this game thinks in. */
-        const val STANDARD_SIZE: Int = BOOSTER_STANDARD_SIZE
-
-        /** The packs whose every card is worth having; a bigger one would be a giveaway. */
-        const val PREMIUM_SIZE: Int = BOOSTER_PREMIUM_SIZE
-    }
 }
-
-// File-private, because an enum entry's constructor runs before its own companion exists and the
-// three FFVIII packs name their size in that constructor. Re-exposed on the companion above so a
-// caller still reads `BoosterType.STANDARD_SIZE`.
-private const val BOOSTER_STANDARD_SIZE = 5
-private const val BOOSTER_PREMIUM_SIZE = 3
 
 /**
  * Something in the player's bag.
@@ -402,53 +501,61 @@ data class BoosterItem(
     override fun withStack(count: Int): BoosterItem = copy(stack = count)
 
     /**
-     * Opens the pack: [BoosterType.size] card ids, the last of them the good one.
+     * Opens the pack: [BoosterType.cardCount] card ids from [BoosterType.pool], each drawn
+     * independently against [BoosterType.weights].
      *
-     * ### The draw itself is the AS3's, bias included
+     * ### The draw itself
      *
-     * `BoosterItem.open()` (`:60-65`) verbatim:
-     *
-     * ```actionscript
-     * var regularRand:Number = Math.random() * uint(this._boosterCards.length - 1);
-     * var downgrade:Number    = Math.random() * 1.25;
-     * var fin:uint = Math.min(Math.round(regularRand * downgrade), this._boosterCards.length - 1);
-     * ```
-     *
-     * Two uniform draws multiplied together, so the result is heavily weighted towards **index 0**
-     * and the last entry is nearly unreachable — with a 6-card pool the mean index is about 1.6 of
-     * 5. Since the pools are written best-last, that is the rarity curve, and it is intentional in
-     * the original however oddly expressed. Reproduced rather than replaced.
-     *
-     * ### What is new is how many times it runs
-     *
-     * The AS3 pack was **one** draw. You paid 520 MGP, one card came out, and whether the purchase
-     * was worth making was settled before the animation finished — which is why nothing in the
-     * original made opening a pack an event. A pack is a ritual in every game that sells one.
-     *
-     * So: `size - 1` ordinary draws over the whole pool, then **one draw restricted to
-     * [BoosterType.rareFrom] onwards**. Returned in that order, worst prospect first, which is the
-     * order the reveal flips them in — the first cards are what you expected and the last is the
-     * question. Take the list as given; shuffling it would throw away the only structure it has.
-     *
-     * Duplicates are possible and are not a defect: a second copy of a card is a card a player
+     * Every card is a separate weighted pick — `Random.nextDouble() * total` walked against the
+     * cumulative weights until it lands, `total` being `weights.sum()` rather than a fixed 1.0,
+     * since a pack's weights are card-specific numbers (a real drop-report percentage, or an
+     * inverse-rarity ratio, or a frozen formula output — see [BoosterType]'s class doc) and are
+     * never required to have been normalised by whoever authored them. The picks are independent
+     * and with replacement: opening a pack that draws several can draw the same card twice, the
+     * same as opening the same one-card pack twice in a row — a second copy is a card a player
      * wants, since `GameSave` counts copies and a deck may field them.
+     *
+     * ### Why every shipped pack still draws one
+     *
+     * A pack used to deal several cards unconditionally — `size - 1` ordinary draws over the pool
+     * plus one draw restricted to a "guaranteed" top slice — a mechanic this game never actually
+     * had. The AS3 pack was one draw, and so is the real FFXIV's: a Triad Card bought from the
+     * Triple Triad Trader yields exactly one card, and arrtripletriad.com's own reported drop rates
+     * confirm it — a flat percentage per card in a pack's pool, summing to 100%, which is only
+     * sensible as a single categorical draw and not as five biased ones. Every [BoosterType] sold
+     * today leaves [BoosterType.cardCount] at its default of 1 for that reason; the loop below is
+     * general so a future pack can set it above 1 without this function changing again.
      *
      * @param random injected so drops are reproducible in tests.
      */
-    fun open(random: Random = Random.Default): List<Int> {
-        val ordinary = List(boosterType.size - 1) { drawFrom(boosterType.pool, random) }
-        return ordinary + drawFrom(boosterType.pool.drop(boosterType.rareFrom), random)
-    }
+    fun open(random: Random = Random.Default): List<Int> =
+        drawCards(boosterType.pool, boosterType.weights, boosterType.cardCount, random)
+}
 
-    private fun drawFrom(pool: List<Int>, random: Random): Int {
-        val last = pool.lastIndex
-        val regular = random.nextDouble() * last
-        val downgrade = random.nextDouble() * DOWNGRADE_CEILING
-        return pool[min((regular * downgrade).roundToInt(), last)]
-    }
-
-    private companion object {
-        const val DOWNGRADE_CEILING = 1.25
+/**
+ * The pure draw [BoosterItem.open] delegates to, kept free of [BoosterType] so the mechanism is
+ * testable — including with a [count] above 1 — without shipping a multi-card pack to prove it
+ * works. `internal` rather than `private` for exactly that: `commonTest` sits in the same module.
+ */
+internal fun drawCards(
+    pool: List<Int>,
+    weights: List<Double>,
+    count: Int,
+    random: Random,
+): List<Int> {
+    val total = weights.sum()
+    return List(count) {
+        val target = random.nextDouble() * total
+        var cumulative = 0.0
+        var picked = pool.last()
+        for (index in weights.indices) {
+            cumulative += weights[index]
+            if (target < cumulative) {
+                picked = pool[index]
+                break
+            }
+        }
+        picked
     }
 }
 

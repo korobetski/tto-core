@@ -8,6 +8,18 @@ package com.tripletriad.data
  * Tests that care about set metadata — released flags, sort order — build their own.
  */
 internal val TEST_SETS: List<CardSet> = listOf(
-    CardSet(block = 1, slug = "ff14", nameKey = "APP_SET_FF14", sortOrder = 1, released = true),
-    CardSet(block = 2, slug = "ff8", nameKey = "APP_SET_FF8", sortOrder = 2, released = true),
+    CardSet(
+        blocks = listOf(1),
+        slug = "ff14",
+        nameKey = "APP_SET_FF14",
+        sortOrder = 1,
+        released = true,
+    ),
+    CardSet(
+        blocks = listOf(8),
+        slug = "ff8",
+        nameKey = "APP_SET_FF8",
+        sortOrder = 2,
+        released = true,
+    ),
 )

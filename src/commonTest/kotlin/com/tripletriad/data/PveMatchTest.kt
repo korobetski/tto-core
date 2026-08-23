@@ -39,7 +39,8 @@ class PveMatchTest {
 
     private val catalog = CardCatalog(
         sets = TEST_SETS,
-        cards = (1..40).map { card(1, it) } + (1..30).map { card(2, it) },
+        cards = (1..40).map { card(TestFormats.FF14_BLOCK, it) } +
+            (1..30).map { card(TestFormats.FF8_BLOCK, it) },
     )
 
     private val opponent = Npc(
@@ -50,8 +51,8 @@ class PveMatchTest {
         cards = listOf(20, 21, 22, 23).map(::ff14),
     )
 
-    /** A block-2 card id — the shipped `ff8` table. */
-    private fun ff8(number: Int) = Card.idFor(block = 2, number = number)
+    /** An `ff8` card id. The block is named rather than written out: FFVIII moved from 2 to 8. */
+    private fun ff8(number: Int) = Card.idFor(block = TestFormats.FF8_BLOCK, number = number)
 
     /**
      * Ids are global, so a fixture has to say which block its cards come from: an id alone no

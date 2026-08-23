@@ -7,7 +7,6 @@ import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -15,15 +14,14 @@ import kotlin.test.assertTrue
  *
  * ### The distribution is the part worth testing
  *
- * `indexOdds` claims to be `BoosterItem.open`'s draw in closed form: two uniforms multiplied, which
- * has CDF `t − t·ln t`. That is a claim about *this* code matching *that* code, and the only honest
+ * [oddsOf] claims to be `BoosterItem.open`'s draw, normalised: the same [BoosterType.weights] the
+ * draw itself reads. That is a claim about *this* code matching *that* code, and the only honest
  * way to check it is to run the real draw a great many times and see whether the shape agrees. So
- * [theClosedFormMatchesTheDrawItClaimsToDescribe] does exactly that — it is the reason to trust
- * every price on the shelf, since all of them are integrals against this distribution.
+ * [theOddsMatchTheDrawTheyClaimToDescribe] does exactly that — it is the reason to trust every
+ * price on the shelf, since all of them are integrals against this distribution.
  *
- * Everything else here is properties: odds sum to one, a better pool costs more, a guarantee is a
- * guarantee. The shipped shelf's actual numbers belong to `ShopBundleTest` in the client, where the
- * real card table is.
+ * Everything else here is properties: odds sum to one, a better pool costs more. The shipped
+ * shelf's actual numbers belong to `ShopBundleTest` in the client, where the real card table is.
  */
 class BoosterPricingTest {
     private fun card(id: Int, rarity: Int) = Card(
@@ -48,51 +46,60 @@ class BoosterPricingTest {
     // ---- The distribution -------------------------------------------------
 
     @Test
-    fun theOddsOverAPoolAreADistribution() {
-        for (size in 1..20) {
-            val odds = BoosterPricing.indexOdds(size)
+    fun oddsOfAnyPackAreADistribution() {
+        for (type in BoosterType.entries) {
+            val odds = BoosterPricing.oddsOf(type)
 
-            assertEquals(size, odds.size, "one entry per card")
-            assertTrue(odds.all { it >= 0.0 }, "no negative chance: $odds")
-            assertTrue(abs(odds.sum() - 1.0) < TOLERANCE, "size $size sums to ${odds.sum()}")
+            assertEquals(type.pool.size, odds.size, "${type.name}: one entry per card")
+            assertTrue(odds.all { it >= 0.0 }, "${type.name}: no negative chance: $odds")
+            assertTrue(
+                abs(odds.sum() - 1.0) < TOLERANCE,
+                "${type.name} sums to ${odds.sum()}",
+            )
         }
     }
 
-    /** A one-card pool has no `last` to divide by, and answers with certainty instead. */
+    /**
+     * `BoosterType.weights` need not already sum to 1 — a scraped percentage, an inverse-rarity
+     * ratio and a frozen formula output arrive at three different scales — so this pins that
+     * [oddsOf] is doing that normalising, rather than assuming whoever authors a pack got it right.
+     */
     @Test
-    fun aSingleCardPoolIsCertain() {
-        assertEquals(listOf(1.0), BoosterPricing.indexOdds(1))
-    }
+    fun oddsOfATwoToOneWeightedPoolAreTwoToOne() {
+        val odds = BoosterPricing.oddsOf(BoosterType.PLATINUM)
+        val fourStarOdds = odds.take(THREE_FOUR_STAR_CARDS)
+        val fiveStarOdds = odds.drop(THREE_FOUR_STAR_CARDS)
 
-    @Test
-    fun anEmptyPoolIsAProgrammingError() {
-        assertFailsWith<IllegalArgumentException> { BoosterPricing.indexOdds(0) }
+        assertTrue(fourStarOdds.all { abs(it - fourStarOdds.first()) < TOLERANCE }, "$odds")
+        assertTrue(fiveStarOdds.all { abs(it - fiveStarOdds.first()) < TOLERANCE }, "$odds")
+        assertTrue(
+            fourStarOdds.first() > fiveStarOdds.first(),
+            "the cheaper rarity must be commoner",
+        )
     }
 
     /**
-     * The closed form really is the draw.
+     * The normalised odds really are the draw.
      *
      * `BoosterItem.open` is sampled forty thousand times and the histogram compared against
-     * [BoosterPricing.indexOdds]. This is the load-bearing test of the file: if the two ever part
+     * [BoosterPricing.oddsOf]. This is the load-bearing test of the file: if the two ever part
      * company, every price in the shop becomes an integral against a distribution the game does not
      * use, and nothing else would notice — the prices would still be numbers, and still ordered,
      * and still wrong.
      *
-     * The tolerance is loose because forty thousand samples of a ten-way split have a standard
+     * The tolerance is loose because forty thousand samples of a thirteen-way split have a standard
      * error around half a point. It is tight enough to catch a distribution that is *different*,
      * which is the failure being guarded against, not one that is noisy.
      */
     @Test
-    fun theClosedFormMatchesTheDrawItClaimsToDescribe() {
+    fun theOddsMatchTheDrawTheyClaimToDescribe() {
         val pack = BoosterItem(BoosterType.BEAST)
         val pool = BoosterType.BEAST.pool
-        val expected = BoosterPricing.indexOdds(pool.size)
+        val expected = BoosterPricing.oddsOf(BoosterType.BEAST)
 
-        // The ordinary slots only. The guaranteed one draws from a sub-list by design, and mixing
-        // it in would be comparing one distribution against a blend of two.
         val counts = IntArray(pool.size)
         repeat(SAMPLES) { seed ->
-            for (id in pack.open(Random(seed)).dropLast(1)) counts[pool.indexOf(id)] += 1
+            for (id in pack.open(Random(seed))) counts[pool.indexOf(id)] += 1
         }
         val drawn = counts.sum()
 
@@ -100,62 +107,88 @@ class BoosterPricingTest {
             val observed = counts[index].toDouble() / drawn
             assertTrue(
                 abs(observed - expected[index]) < SAMPLING_TOLERANCE,
-                "index $index: the draw gives $observed, the closed form says ${expected[index]}",
+                "index $index: the draw gives $observed, oddsOf says ${expected[index]}",
             )
         }
     }
 
     /**
-     * Written best-last, drawn front-heavy — that asymmetry *is* the rarity curve.
-     *
-     * ### Both ends of the pool are rounding artefacts, and the second card wins
-     *
-     * The obvious assertion — "index 0 is the likeliest" — is **false**, which this test found. The
-     * draw rounds, so index 0 owns the half-width bin `[0, ½)` while index 1 owns a full-width
-     * `[½, 1½)`: the second card of a pool comes out **more often than the first**. The last index
-     * is the mirror image, absorbing everything that overshot through the `min`, so it sits above
-     * its neighbour too.
-     *
-     * That is the same rounding fault `docs/analysis/game-rules.md` § 15.6 records for the rule
-     * roulette, where `Math.round(Math.random() * (n - 1))` halves the odds of the first and last
-     * entries — here it is the booster draw, and it survives for the same reason: it *is* the
-     * shipped drop rate, and levelling it would change every pack in the game.
-     *
-     * So what is asserted is the true shape: a peak at index 1, a monotone fall through the
-     * interior, and a lifted tail.
+     * [BoosterType.BEAST] is not a real pack — its weights are a frozen copy of the old
+     * uniform-product formula, written weakest-first the same way every pool is — so its shape is
+     * still worth pinning: a peak just past the first card, a fall through the interior, a lifted
+     * tail. See the class doc on [BoosterType] for why this pack in particular carries that shape
+     * rather than a real drop-report table.
      */
     @Test
-    fun theOddsLeanHardOnTheStartOfThePool() {
-        val odds = BoosterPricing.indexOdds(10)
+    fun aFrozenPoolStillLeansHardOnItsStart() {
+        val odds = BoosterPricing.oddsOf(BoosterType.BEAST)
         val interior = odds.subList(1, odds.size - 1)
 
-        assertEquals(
-            odds.max(),
-            odds[1],
-            "the second card owns a full-width bin and the first does not",
-        )
-        assertTrue(odds[0] < odds[1], "index 0 is rounded into from one side only")
+        assertEquals(odds.max(), odds[1], "the second card is the peak, same as the old formula")
+        assertTrue(odds[0] < odds[1], "index 0 sits below the peak")
         assertTrue(odds.last() > odds[odds.size - 2], "the last index absorbs every overshoot")
         assertEquals(
             interior.sortedDescending(),
             interior,
             "the odds must fall along the pool: $odds",
         )
-        assertTrue(odds.take(3).sum() > HALF, "most of the mass sits at the front: $odds")
+        assertTrue(
+            odds.take(odds.size / 2).sum() > HALF,
+            "most of the mass sits in the front half of the pool: $odds",
+        )
     }
 
     // ---- What it says about a pack ---------------------------------------
 
+    /**
+     * No shipped [BoosterType] draws more than one card — see that class's KDoc — but
+     * [BoosterPricing.expectedValueFor] and [BoosterPricing.fiveStarChanceFor] are kept general so
+     * a future multi-card pack prices itself correctly without this file changing again. This pins
+     * that generality directly, against a synthetic pool rather than a shipped one.
+     */
     @Test
-    fun aPackIsWorthMoreThanOneOfItsCards() {
+    fun expectedValueScalesLinearlyWithCardCount() {
+        val pool = listOf(1, 2)
+        val weights = listOf(1.0, 1.0)
+        val single = BoosterPricing.expectedValueFor(pool, weights, count = 1, cards)
+
+        val tripled = BoosterPricing.expectedValueFor(pool, weights, count = THREE, cards)
+
+        assertTrue(abs(tripled - single * THREE) < TOLERANCE, "$tripled should be $single times 3")
+    }
+
+    /**
+     * The five-star chance of several draws is "at least one hits", not "the chances add up" — the
+     * latter can exceed 1 and does here: two draws each `perDraw` away from certain still are not
+     * certain together.
+     */
+    @Test
+    fun fiveStarChanceIsAtLeastOneNotASum() {
+        val pool = listOf(SYNTHETIC_ID_A, SYNTHETIC_ID_B)
+        val weights = listOf(1.0, 1.0)
+        val fiveStarCards = mapOf(
+            SYNTHETIC_ID_A to card(SYNTHETIC_ID_A, FIVE_STAR),
+            SYNTHETIC_ID_B to card(SYNTHETIC_ID_B, 1),
+        )
+        val perDraw = BoosterPricing.fiveStarChanceFor(pool, weights, count = 1, fiveStarCards)
+
+        val twice = BoosterPricing.fiveStarChanceFor(pool, weights, count = 2, fiveStarCards)
+
+        assertTrue(twice > perDraw, "drawing twice should raise the chance of a hit")
+        assertTrue(twice < 1.0, "two draws at 50% is not a certainty")
+        assertTrue(
+            abs(twice - (1.0 - (1.0 - perDraw) * (1.0 - perDraw))) < TOLERANCE,
+            "$twice should be 1 - (1 - $perDraw)^2",
+        )
+    }
+
+    @Test
+    fun aPackIsWorthAtLeastAsMuchAsTheCheapestCardInTheGame() {
         for (type in BoosterType.entries) {
             val value = BoosterPricing.expectedValue(type, cards)
             val cheapest = CardValue.MGP_BY_RARITY.getValue(1)
 
-            assertTrue(
-                value > cheapest * type.size,
-                "${type.name} of ${type.size} cards is worth $value",
-            )
+            assertTrue(value >= cheapest, "${type.name}'s single draw is worth $value")
             assertTrue(BoosterPricing.priceOf(type, cards) > 0, "${type.name} must cost something")
         }
     }
@@ -182,29 +215,6 @@ class BoosterPricingTest {
         val price = BoosterPricing.priceOf(BoosterType.BRONZE, cards = emptyMap())
 
         assertTrue(price > 0, "an unpriceable pack must still have a price")
-    }
-
-    /**
-     * The guaranteed slot cannot fall below the floor the shop advertises.
-     *
-     * Both halves matter and they are the same fact from two directions: the floor is *derived*
-     * from the guaranteed range, and the draw never leaves that range — so the shop's promise is
-     * true by construction rather than by somebody remembering to update a sentence.
-     */
-    @Test
-    fun theAdvertisedFloorIsOneTheDrawCannotBreak() {
-        for (type in BoosterType.entries) {
-            val floor = BoosterPricing.guaranteedFloor(type, cards)
-            val pack = BoosterItem(type)
-
-            repeat(GUARANTEE_SAMPLES) { seed ->
-                val prize = pack.open(Random(seed)).last()
-                assertTrue(
-                    (cards[prize]?.rarity ?: 1) >= floor,
-                    "${type.name} promised $floor★ and dealt ${cards[prize]?.rarity}",
-                )
-            }
-        }
     }
 
     @Test
@@ -243,7 +253,11 @@ class BoosterPricingTest {
         const val TOLERANCE = 1e-9
         const val SAMPLING_TOLERANCE = 0.02
         const val SAMPLES = 40_000
-        const val GUARANTEE_SAMPLES = 300
         const val HALF = 0.5
+        const val THREE_FOUR_STAR_CARDS = 3
+        const val THREE = 3
+        const val FIVE_STAR = 5
+        const val SYNTHETIC_ID_A = 300
+        const val SYNTHETIC_ID_B = 301
     }
 }

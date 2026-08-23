@@ -208,9 +208,9 @@ class PveMatchTest {
 
         assertEquals(2, sent.plays.size, "the player's move and the reply, in that order")
         assertEquals(CardColor.RED, assertNotNull(back.lastPlay).player)
-        assertEquals(1, back.lastPlay?.position)
-        assertEquals(theirs.id, back.lastPlay?.card?.id)
-        assertEquals(CardColor.RED, back.lastPlay?.card?.owner, "the played card is stamped too")
+        assertEquals(1, back.lastPlay.position)
+        assertEquals(theirs.id, back.lastPlay.card.id)
+        assertEquals(CardColor.RED, back.lastPlay.card.owner, "the played card is stamped too")
     }
 
     /** A plain read announces nothing: resuming is not a story to replay at somebody. */
