@@ -70,11 +70,13 @@ class ShopCatalogTest {
      * `FF14_SHOP` had twenty entries and `FF8_SHOP` five. Eight of the twenty were booster packs
      * and are gone from here: a pack's price is computed from its contents ([BoosterPricing]), so
      * it cannot sit in a list of literals. Twelve and five are what is left, and they are still the
-     * AS3's entries.
+     * AS3's entries — plus the 26 the FFXIV set's completion added on top of `ff14`'s twelve, sold
+     * on arrtripletriad.com's Triple Triad Trader and priced from what it lists rather than from
+     * any AS3 source, since the AS3 predates every one of those 26 cards.
      */
     @Test
     fun theTwoAuthoredTablesHoldWhatTheAs3PricedByHand() {
-        assertEquals(12, ShopCatalog.ff14.size, "FF14_SHOP less its eight packs")
+        assertEquals(12 + 26, ShopCatalog.ff14.size, "FF14_SHOP less its eight packs, plus Trader")
         assertEquals(5, ShopCatalog.ff8.size, "FF8_SHOP has 5")
         assertTrue(
             (ShopCatalog.ff14 + ShopCatalog.ff8).none { it.item is BoosterItem },

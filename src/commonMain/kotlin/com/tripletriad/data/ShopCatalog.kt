@@ -55,7 +55,7 @@ data class ShopOffer(val item: Item, val price: Int) {
  * opponent reward, and neither grants one either.
  */
 object ShopCatalog {
-    /** `FF14_SHOP` (`shopScreen.as:42-63`). */
+    /** `FF14_SHOP` */
     val ff14: List<ShopOffer> = listOf(
         ShopOffer(PotionItem(PotionType.MGP), price = 50),
         ShopOffer(PotionItem(PotionType.XP), price = 50),
@@ -69,9 +69,61 @@ object ShopCatalog {
         ShopOffer(CardItem(319), price = 400_000),
         ShopOffer(CardItem(374), price = 200_000),
         ShopOffer(CardItem(330), price = 1_000_000),
+        // #169 Opo-opo
+        ShopOffer(CardItem(425), price = 600),
+        // #170 Adamantoise
+        ShopOffer(CardItem(426), price = 840),
+        // #203 Mossling
+        ShopOffer(CardItem(459), price = 840),
+        // #204 Chapuli
+        ShopOffer(CardItem(460), price = 1_200),
+        // #232 Muud Suud
+        ShopOffer(CardItem(488), price = 1_500),
+        // #173 Gold Saucer Attendant
+        ShopOffer(CardItem(429), price = 5_000),
+        // #392 PuPu
+        ShopOffer(CardItem(649), price = 5_454),
+        // #178 Roland
+        ShopOffer(CardItem(434), price = 10_000),
+        // #372 Suprae-Lugae
+        ShopOffer(CardItem(629), price = 14_400),
+        // #297 Lugus
+        ShopOffer(CardItem(554), price = 21_000),
+        // #320 Lunar Ifrit
+        ShopOffer(CardItem(577), price = 22_000),
+        // #319 Valens van Varro
+        ShopOffer(CardItem(576), price = 22_400),
+        // #353 Thal
+        ShopOffer(CardItem(610), price = 24_800),
+        // #362 Byregot
+        ShopOffer(CardItem(619), price = 24_800),
+        // #397 Halone
+        ShopOffer(CardItem(654), price = 24_800),
+        // #400 Oschon
+        ShopOffer(CardItem(657), price = 24_800),
+        // #427 Ark Angel MR
+        ShopOffer(CardItem(684), price = 24_800),
+        // #364 Scarmiglione
+        ShopOffer(CardItem(621), price = 40_000),
+        // #300 Elidibus
+        ShopOffer(CardItem(557), price = 56_000),
+        // #434 Prishe of the Distant Chains
+        ShopOffer(CardItem(691), price = 60_000),
+        // #356 Endsinger
+        ShopOffer(CardItem(613), price = 72_000),
+        // #181 Gigi
+        ShopOffer(CardItem(437), price = 90_000),
+        // #241 Stormblood Tataru Taru
+        ShopOffer(CardItem(497), price = 96_000),
+        // #252 Noctis Lucis Caelum
+        ShopOffer(CardItem(508), price = 200_000),
+        // #405 Clive Rosfield
+        ShopOffer(CardItem(662), price = 200_000),
+        // #210 Raubahn & Pipin
+        ShopOffer(CardItem(466), price = 400_000),
     )
 
-    /** `FF8_SHOP` (`shopScreen.as:64-70`). */
+    /** `FF8_SHOP` */
     val ff8: List<ShopOffer> = listOf(
         ShopOffer(PotionItem(PotionType.MGP), price = 50),
         ShopOffer(PotionItem(PotionType.XP), price = 50),

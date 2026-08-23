@@ -25,7 +25,9 @@ internal object TestFormats {
     val ff14: Format = Format(
         id = "ff14-standard",
         nameKey = "APP_FORMAT_FF14_STANDARD",
-        blocks = listOf(FF14_BLOCK),
+        // Both of FFXIV's blocks — see the class KDoc. A format admitting only the first would
+        // hide the second from `ShopCatalog.offers` and from anything else that filters by format.
+        blocks = listOf(FF14_BLOCK, 2),
         rules = listOf(
             "RULE_ALL_OPEN",
             "RULE_ASCENSION",
