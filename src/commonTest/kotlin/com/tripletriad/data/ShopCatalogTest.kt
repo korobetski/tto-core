@@ -72,12 +72,14 @@ class ShopCatalogTest {
      * it cannot sit in a list of literals. Twelve and five are what is left, and they are still the
      * AS3's entries — plus the 26 the FFXIV set's completion added on top of `ff14`'s twelve, sold
      * on arrtripletriad.com's Triple Triad Trader and priced from what it lists rather than from
-     * any AS3 source, since the AS3 predates every one of those 26 cards.
+     * any AS3 source, since the AS3 predates every one of those 26 cards; and plus four more single
+     * cards on `ff8` — Blobra, Cactuar, Ultima Weapon, Diablos — priced by hand, since
+     * `shopScreen.as` never sold them either.
      */
     @Test
     fun theTwoAuthoredTablesHoldWhatTheAs3PricedByHand() {
         assertEquals(12 + 26, ShopCatalog.ff14.size, "FF14_SHOP less its eight packs, plus Trader")
-        assertEquals(5, ShopCatalog.ff8.size, "FF8_SHOP has 5")
+        assertEquals(5 + 4, ShopCatalog.ff8.size, "FF8_SHOP has 5, plus four hand-priced cards")
         assertTrue(
             (ShopCatalog.ff14 + ShopCatalog.ff8).none { it.item is BoosterItem },
             "a pack is priced, not authored",

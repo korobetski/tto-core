@@ -123,13 +123,23 @@ object ShopCatalog {
         ShopOffer(CardItem(466), price = 400_000),
     )
 
-    /** `FF8_SHOP` */
+    /**
+     * `FF8_SHOP`
+     */
     val ff8: List<ShopOffer> = listOf(
         ShopOffer(PotionItem(PotionType.MGP), price = 50),
         ShopOffer(PotionItem(PotionType.XP), price = 50),
+        // #5 Blobra
+        ShopOffer(CardItem(2053), price = 120),
         ShopOffer(CardItem(2080), price = 350),
+        // #31 Cactuar
+        ShopOffer(CardItem(2079), price = 400),
         ShopOffer(CardItem(2085), price = 420),
         ShopOffer(CardItem(2093), price = 600),
+        // #77 Ultima Weapon
+        ShopOffer(CardItem(2125), price = 14_000),
+        // #90 Diablos
+        ShopOffer(CardItem(2138), price = 75_000),
     )
 
     /**

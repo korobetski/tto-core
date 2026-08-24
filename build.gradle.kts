@@ -43,7 +43,7 @@ group = "com.tripletriad"
 // It has to be raised as the release it is heading towards, not left behind: a default two releases
 // under what the consumers pin publishes a local artifact nothing resolves, and the comment above
 // then describes a loop that does not work.
-version = providers.gradleProperty("coreVersion").getOrElse("0.7.9")
+version = providers.gradleProperty("coreVersion").getOrElse("0.7.10")
 
 kotlin {
     // 17, matching `:shared`. The server runs 21 and consumes this happily; the reverse would not
