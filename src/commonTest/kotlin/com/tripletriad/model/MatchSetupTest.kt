@@ -144,10 +144,10 @@ class MatchSetupTest {
     @Test
     fun swappingOverlappingHandsCanLeaveADuplicateInHand() {
         val sizes = seeds.map { seed ->
-            val (blue, red) = MatchPreparation.swap(blueDeck, blueDeck, Random(seed))
-            assertEquals(HAND_SIZE, blue.size, "seed $seed")
-            assertEquals(HAND_SIZE, red.size, "seed $seed")
-            blue.distinctBy { it.id }.size
+            val swapped = MatchPreparation.swap(blueDeck, blueDeck, Random(seed))
+            assertEquals(HAND_SIZE, swapped.blue.size, "seed $seed")
+            assertEquals(HAND_SIZE, swapped.red.size, "seed $seed")
+            swapped.blue.distinctBy { it.id }.size
         }
 
         assertTrue(HAND_SIZE in sizes, "identical indices leave the hand unchanged")
@@ -157,13 +157,44 @@ class MatchSetupTest {
     @Test
     fun swappingWithAnEmptyHandIsANoOp() {
         assertEquals(
-            blueDeck to emptyList(),
+            SwappedHands(blueDeck, emptyList()),
             MatchPreparation.swap(blueDeck, emptyList(), Random(1)),
         )
         assertEquals(
-            emptyList<Card>() to redDeck,
+            SwappedHands(emptyList(), redDeck),
             MatchPreparation.swap(emptyList(), redDeck, Random(1)),
         )
+    }
+
+    /**
+     * The point of [SwappedHands] carrying positions at all: a card you handed over out of your own
+     * deck is one you can name on sight, wherever the Open rule says it should be face down.
+     */
+    @Test
+    fun aSwapReportsWhereEachGivenCardLanded() {
+        for (seed in seeds) {
+            val swapped = MatchPreparation.swap(blueDeck, redDeck, Random(seed))
+            val blueSees = swapped.blueSees ?: error("seed $seed reported no slot")
+            val redSees = swapped.redSees ?: error("seed $seed reported no slot")
+
+            // Blue's card went across, so the slot blue is owed sight of holds a card blue owned.
+            assertTrue(
+                swapped.red[blueSees].id in blueDeck.map { it.id },
+                "seed $seed: red's slot $blueSees is not a card blue gave away",
+            )
+            assertTrue(
+                swapped.blue[redSees].id in redDeck.map { it.id },
+                "seed $seed: blue's slot $redSees is not a card red gave away",
+            )
+        }
+    }
+
+    @Test
+    fun aHandThatWasNotSwappedOwesNobodyASlot() {
+        val swapped = MatchPreparation.swap(blueDeck, emptyList(), Random(1))
+
+        assertEquals(emptySet(), swapped.blueKnows)
+        assertEquals(emptySet(), swapped.redKnows)
     }
 
     // ---- Open -------------------------------------------------------------
@@ -194,6 +225,64 @@ class MatchSetupTest {
                 "seed $seed",
             )
             assertTrue(visibility.visiblePositions.all { it in redDeck.indices })
+        }
+    }
+
+    // ---- What a swap makes public ------------------------------------------
+
+    @Test
+    fun aClosedHandStillShowsTheCardTheOtherSideGaveAway() {
+        val visibility =
+            HandVisibility.forRule(OpenRule.NONE, redDeck, Random(1), known = setOf(2))
+
+        assertEquals(setOf(2), visibility.visiblePositions)
+        assertEquals(listOf(redDeck[2]), visibility.visible(redDeck))
+    }
+
+    /**
+     * The half of the rule that is easy to get wrong: a swapped card is **one of** the three, not a
+     * fourth. Three Open shows three cards or it is not Three Open.
+     */
+    @Test
+    fun threeOpenCountsTheSwappedCardAmongItsThree() {
+        for (seed in seeds) {
+            val visibility =
+                HandVisibility.forRule(OpenRule.THREE_OPEN, redDeck, Random(seed), known = setOf(1))
+
+            assertEquals(
+                HandVisibility.THREE_OPEN_COUNT,
+                visibility.visiblePositions.size,
+                "seed $seed revealed ${visibility.visiblePositions}",
+            )
+            assertTrue(visibility.isVisible(1), "seed $seed hid the swapped card")
+        }
+    }
+
+    @Test
+    fun allOpenIsUnchangedByASwapItAlreadyReveals() {
+        val plain = HandVisibility.forRule(OpenRule.ALL_OPEN, redDeck, Random(1))
+        val swapped =
+            HandVisibility.forRule(OpenRule.ALL_OPEN, redDeck, Random(1), known = setOf(3))
+
+        assertEquals(plain, swapped)
+    }
+
+    /**
+     * `shuffled` reads the generator by hand size and not by how many are taken, so revealing one
+     * fewer at random costs no draw — and a seed deals exactly what it dealt before. `prepare`'s
+     * KDoc explains why that is worth a test rather than a comment.
+     */
+    @Test
+    fun knowingASlotDoesNotChangeWhatTheGeneratorGoesOnToDeal() {
+        for (seed in seeds) {
+            val plain = Random(seed).also {
+                HandVisibility.forRule(OpenRule.THREE_OPEN, redDeck, it)
+            }
+            val withSwap = Random(seed).also {
+                HandVisibility.forRule(OpenRule.THREE_OPEN, redDeck, it, known = setOf(0))
+            }
+
+            assertEquals(plain.nextInt(), withSwap.nextInt(), "seed $seed diverged")
         }
     }
 

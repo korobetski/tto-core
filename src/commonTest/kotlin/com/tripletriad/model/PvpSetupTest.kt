@@ -152,6 +152,54 @@ class PvpSetupTest {
         assertNotEquals(setup(rules, seed = 9).state.board.elements.size, 0)
     }
 
+    // ---- Swap, and what it stops the Open rule hiding ----------------------
+
+    /**
+     * Under Swap a closed hand is no longer wholly closed: each side handed over a card out of its
+     * own deck and can name it wherever it landed. One of five, and exactly one.
+     */
+    @Test
+    fun aClosedHandUnderSwapShowsEachSideTheCardItGaveAway() {
+        for (seed in 1..SEEDS) {
+            val prepared = setup(GameRules(swap = true), seed = seed)
+
+            for (side in CardColor.entries) {
+                val seen = prepared.viewFor(side).opponentHand.filterNotNull()
+                assertEquals(1, seen.size, "seed $seed, $side saw $seen")
+                // And it is a card that side owned before the swap, not merely some card.
+                val ownedBefore = (if (side == CardColor.BLUE) blue else red).map(Card::id)
+                assertTrue(seen.single().id in ownedBefore, "seed $seed: $side saw a stranger")
+            }
+        }
+    }
+
+    /** Three Open still means three. The swapped card is one of them, so two are news. */
+    @Test
+    fun threeOpenUnderSwapStillRevealsThreeCards() {
+        for (seed in 1..SEEDS) {
+            val prepared = setup(GameRules(open = OpenRule.THREE_OPEN, swap = true), seed = seed)
+
+            for (side in CardColor.entries) {
+                val seen = prepared.viewFor(side).opponentHand.filterNotNull()
+                assertEquals(THREE, seen.size, "seed $seed, $side saw $seen")
+            }
+        }
+    }
+
+    @Test
+    fun withoutSwapAClosedHandStaysClosed() {
+        for (seed in 1..SEEDS) {
+            val prepared = setup(GameRules(swap = false), seed = seed)
+
+            for (side in CardColor.entries) {
+                assertTrue(
+                    prepared.viewFor(side).opponentHand.all { it == null },
+                    "seed $seed: $side saw a card with no swap to have shown it",
+                )
+            }
+        }
+    }
+
     private companion object {
         const val SEEDS = 30
         const val THREE = 3

@@ -65,24 +65,40 @@ data class HandVisibility(val visiblePositions: Set<Int>) {
         val HIDDEN: HandVisibility = HandVisibility(emptySet())
 
         /**
-         * What [rule] reveals of [hand].
+         * What [rule] reveals of [hand], plus whatever [known] the other side knows regardless.
          *
          * [random] is only read for [OpenRule.THREE_OPEN], and uniformly: the original's
          * `tools.rand(randomizer.length - 1)` makes the first and last remaining slot half as
          * likely at each of the three draws
          * ([game-rules.md](../../../../../../../docs/analysis/game-rules.md) § 15.6).
+         *
+         * @param known slots the other side can see whatever the Open rule says, because it has
+         *   already seen the card by another route. Today that is `RULE_SWAP` and only that: a
+         *   player hands over a card out of their own deck, so they know it on sight in the hand it
+         *   lands in — under a closed hand that is one card of five they can name, and it is not
+         *   the rule leaking, it is the swap being something they watched happen.
+         *
+         *   **It counts towards the three rather than adding to them.** Three Open shows three
+         *   cards; a swapped card the player already knows is one of the three, so the rule reveals
+         *   two they did not know. Adding a fourth would make the rule's own name wrong.
+         *
+         *   Costs no extra draw either way: `shuffled` consumes the generator by hand size and not
+         *   by how many are taken, so a seed deals what it always dealt. See [MatchPreparation
+         *   .prepare]'s note on why that matters here.
          */
         fun forRule(
             rule: OpenRule,
             hand: List<Card>,
             random: Random = Random.Default,
+            known: Set<Int> = emptySet(),
         ): HandVisibility = when (rule) {
-            OpenRule.NONE -> HIDDEN
+            OpenRule.NONE -> HandVisibility(known)
             OpenRule.ALL_OPEN -> HandVisibility(hand.indices.toSet())
-            OpenRule.THREE_OPEN ->
-                HandVisibility(
-                    hand.indices.shuffled(random).take(THREE_OPEN_COUNT).toSet(),
-                )
+            OpenRule.THREE_OPEN -> {
+                val room = (THREE_OPEN_COUNT - known.size).coerceAtLeast(0)
+                val drawn = hand.indices.shuffled(random).filterNot { it in known }.take(room)
+                HandVisibility(known + drawn)
+            }
         }
     }
 }
@@ -225,6 +241,33 @@ data class MatchSetup(
 data class HandSource(val deck: List<Card>, val collection: List<Card> = deck)
 
 /**
+ * Two hands after `RULE_SWAP`, and the two slots the exchange made public.
+ *
+ * The positions are the reason this is not a `Pair`. A player hands over a card **out of their own
+ * deck**: they know what it is, and they know which slot it landed in, so a swapped card is a card
+ * the Open rule can no longer pretend is a secret. Under a closed hand it is the one card of five
+ * an opponent can name. Returning the hands alone left every caller to reveal nothing, which is
+ * what they all did.
+ *
+ * @property blueSees the slot in [red] that holds the card blue gave away, or null when no swap
+ *   happened — an empty hand on either side, which [MatchPreparation.swap] passes through
+ *   untouched.
+ * @property redSees the same for blue's hand, from red's side.
+ */
+data class SwappedHands(
+    val blue: List<Card>,
+    val red: List<Card>,
+    val blueSees: Int? = null,
+    val redSees: Int? = null,
+) {
+    /** [blueSees] as the `known` set [HandVisibility.forRule] takes. */
+    val blueKnows: Set<Int> get() = setOfNotNull(blueSees)
+
+    /** [redSees] as the `known` set [HandVisibility.forRule] takes. */
+    val redKnows: Set<Int> get() = setOfNotNull(redSees)
+}
+
+/**
  * The pre-match rule chain — everything between "start a match" and the first placement.
  *
  * [MatchState.start] deliberately takes finished hands and a first player, on the grounds that
@@ -272,14 +315,20 @@ object MatchPreparation {
         blue: List<Card>,
         red: List<Card>,
         random: Random = Random.Default,
-    ): Pair<List<Card>, List<Card>> {
-        if (blue.isEmpty() || red.isEmpty()) return blue to red
+    ): SwappedHands {
+        if (blue.isEmpty() || red.isEmpty()) return SwappedHands(blue, red)
         val fromBlue = random.nextInt(blue.size)
         val fromRed = random.nextInt(red.size)
         val given = blue[fromBlue].copy(owner = CardColor.RED)
         val taken = red[fromRed].copy(owner = CardColor.BLUE)
-        return blue.toMutableList().also { it[fromBlue] = taken } to
-            red.toMutableList().also { it[fromRed] = given }
+        return SwappedHands(
+            blue = blue.toMutableList().also { it[fromBlue] = taken },
+            red = red.toMutableList().also { it[fromRed] = given },
+            // The slots each side is owed sight of, and they cross: blue's card went to `fromRed`
+            // in red's hand, so `fromRed` is what *blue* gets to see.
+            blueSees = fromRed,
+            redSees = fromBlue,
+        )
     }
 
     /**
@@ -340,8 +389,10 @@ object MatchPreparation {
         forcedFlip: CoinFlip? = null,
     ): MatchSetup {
         val chosen = if (rules.random) randomHand(blue.collection, random) else blue.deck
-        val (blueHand, opponentHand) =
-            if (rules.swap) swap(chosen, redHand, random) else chosen to redHand
+        val swapped =
+            if (rules.swap) swap(chosen, redHand, random) else SwappedHands(chosen, redHand)
+        val blueHand = swapped.blue
+        val opponentHand = swapped.red
         val flip = forcedFlip ?: CoinFlip.toss(random)
 
         val state = MatchState.start(
@@ -370,7 +421,12 @@ object MatchPreparation {
          */
         return MatchSetup(
             state = state,
-            opponentVisibility = HandVisibility.forRule(rules.open, opponentHand, random),
+            opponentVisibility = HandVisibility.forRule(
+                rules.open,
+                opponentHand,
+                random,
+                known = swapped.blueKnows,
+            ),
             coinFlip = flip,
             intro = introSteps(rules),
         )
@@ -388,14 +444,19 @@ object MatchPreparation {
     fun prepareRematch(finished: MatchState, random: Random = Random.Default): MatchSetup {
         val rules = finished.rules
         val regrouped = finished.suddenDeathRematch(elementsFor(rules, random))
+        val blueRegrouped = regrouped.hands[CardColor.BLUE].orEmpty()
+        val redRegrouped = regrouped.hands[CardColor.RED].orEmpty()
+        val swapped = if (rules.swap) {
+            swap(blueRegrouped, redRegrouped, random)
+        } else {
+            SwappedHands(blueRegrouped, redRegrouped)
+        }
+        // Rebuilt only when the rule actually moved a card. Copying unconditionally would mint an
+        // empty hand for a side `suddenDeathRematch` left out of the map, which is a different
+        // state than the one it returned.
         val state = if (rules.swap) {
-            val (blueHand, redHand) = swap(
-                regrouped.hands[CardColor.BLUE].orEmpty(),
-                regrouped.hands[CardColor.RED].orEmpty(),
-                random,
-            )
             regrouped.copy(
-                hands = mapOf(CardColor.BLUE to blueHand, CardColor.RED to redHand),
+                hands = mapOf(CardColor.BLUE to swapped.blue, CardColor.RED to swapped.red),
             )
         } else {
             regrouped
@@ -403,10 +464,18 @@ object MatchPreparation {
         // Both, in the same order [prepare] draws them. A rematch rebuilds the hands out of what
         // each side ended up owning, so a visibility carried over from the previous board would
         // name slots that now hold different cards.
-        val blueSeesRed =
-            HandVisibility.forRule(rules.open, state.hands[CardColor.RED].orEmpty(), random)
-        val redSeesBlue =
-            HandVisibility.forRule(rules.open, state.hands[CardColor.BLUE].orEmpty(), random)
+        val blueSeesRed = HandVisibility.forRule(
+            rules.open,
+            state.hands[CardColor.RED].orEmpty(),
+            random,
+            known = swapped.blueKnows,
+        )
+        val redSeesBlue = HandVisibility.forRule(
+            rules.open,
+            state.hands[CardColor.BLUE].orEmpty(),
+            random,
+            known = swapped.redKnows,
+        )
 
         return MatchSetup(
             state = state,
@@ -451,19 +520,30 @@ object MatchPreparation {
         rules: GameRules = GameRules(),
         random: Random = Random.Default,
     ): PvpSetup {
-        val (blue, red) = if (rules.swap) swap(blueHand, redHand, random) else blueHand to redHand
+        val swapped =
+            if (rules.swap) swap(blueHand, redHand, random) else SwappedHands(blueHand, redHand)
 
         return PvpSetup(
             state = MatchState.start(
-                blueHand = blue,
-                redHand = red,
+                blueHand = swapped.blue,
+                redHand = swapped.red,
                 first = first,
                 rules = rules,
                 elements = elementsFor(rules, random),
             ),
             // Two draws, not one applied twice. See the KDoc above.
-            blueSeesRed = HandVisibility.forRule(rules.open, red, random),
-            redSeesBlue = HandVisibility.forRule(rules.open, blue, random),
+            blueSeesRed = HandVisibility.forRule(
+                rules.open,
+                swapped.red,
+                random,
+                known = swapped.blueKnows,
+            ),
+            redSeesBlue = HandVisibility.forRule(
+                rules.open,
+                swapped.blue,
+                random,
+                known = swapped.redKnows,
+            ),
             intro = introSteps(rules),
         )
     }
