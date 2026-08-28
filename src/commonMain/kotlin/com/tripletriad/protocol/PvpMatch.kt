@@ -89,12 +89,26 @@ typealias PvpPlay = Placement
  * @property lastPlay the placement that produced this position, or null on a board nothing has been
  *   played on. Sent to **both** sides and identical for both: what a move flipped is public the
  *   moment it flips. See [PvpPlay] for why it cannot be recomputed from the boards.
+ * @property rematch how many Sudden Death rematches have been played, 0 for the first board. A
+ *   rematch resets [cells] and [placement], so without this a client cannot tell a fresh board from
+ *   the first one and will not replay the opening for it — the same field `PveMatchView` carries,
+ *   for the same reason. The rematch itself is *derived* on the server rather than stored; this is
+ *   the count travelling, not a second source of truth.
+ * @property opponentAvatarId which avatar the other player chose, or blank when the server has
+ *   none to give. A board draws the opponent's face, and against a program that face is the NPC
+ *   portrait the roster already showed; against a person it is this. It travels beside
+ *   [opponentName] because it is the same fact — who you are looking at — and because the name
+ *   alone is what left the multiplayer board unable to draw the chrome the solo board uses.
+ *
+ *   Public by construction: an avatar is what a player picked to be seen as, and the lobby already
+ *   shows their name to anyone who lists the tables.
  */
 @Serializable
 data class PvpMatchView(
     val matchId: String,
     val side: CardColor,
     val opponentName: String,
+    val opponentAvatarId: String = "",
     val rules: GameRules,
     val formatId: String,
     val cells: List<PvpCell?>,
@@ -110,6 +124,7 @@ data class PvpMatchView(
     val stake: PvpStake = PvpStake.None,
     val outcome: PvpOutcome? = null,
     val lastPlay: PvpPlay? = null,
+    val rematch: Int = 0,
 ) {
     /**
      * This view as the model type the screen renders, resolving ids through [cards].
@@ -173,14 +188,17 @@ data class PvpMatchView(
             matchId: String,
             opponentName: String,
             formatId: String,
+            opponentAvatarId: String = "",
             status: PvpMatchStatus = PvpMatchStatus.PLAYING,
             stake: PvpStake = PvpStake.None,
             deadline: Long? = null,
             outcome: PvpOutcome? = null,
+            rematch: Int = 0,
         ): PvpMatchView = PvpMatchView(
             matchId = matchId,
             side = view.side,
             opponentName = opponentName,
+            opponentAvatarId = opponentAvatarId,
             rules = view.rules,
             formatId = formatId,
             cells = view.board.cells.map { placed ->
@@ -197,6 +215,7 @@ data class PvpMatchView(
             status = status,
             stake = stake,
             outcome = outcome,
+            rematch = rematch,
             lastPlay = view.lastPlay?.let { play ->
                 PvpPlay(
                     player = play.player,
@@ -272,12 +291,27 @@ enum class PvpMatchStatus {
  *   may have a non-empty list of both.
  * @property picksOwed how many of the other side's cards this reader still has to name. Non-zero
  *   only while the status is [PvpMatchStatus.AWAITING_CLAIM], and only for the winner.
- * @property pickFrom what there is to choose from — the loser's dealt hand. **Sent to the winner
- *   only, and only while [picksOwed] is non-zero**: it is the one place this protocol puts a hand
- *   on the wire that it otherwise hides, and it is on the wire because you cannot choose from cards
- *   you have not been shown.
+ * @property pickFrom the cards this claim is being made from — the loser's dealt hand. **Sent to
+ *   both sides while a claim is outstanding**, and empty otherwise.
+ *
+ *   It is the one place this protocol puts a hand on the wire that it otherwise hides, and it goes
+ *   to each side for a different reason. The winner cannot choose from cards they have not been
+ *   shown. The loser is about to have cards taken out of their collection, and *which* is not a
+ *   question the final board answers — the board says who owns what now, and nothing about what was
+ *   dealt. Sending it to the winner alone left the loser watching a name and a countdown.
+ *
+ *   No hand is leaked by the second half: the loser's own is what the loser is shown. The list is
+ *   identical for both readers, which is the honest shape — it describes the claim rather than the
+ *   reader, and [picksOwed] is what still separates the two.
  * @property claimDeadline epoch millis by which the choice must be made, after which the server
  *   makes it. Sent as an instant for the reason [PvpMatchView.deadline] is.
+ * @property achievementIds what this match unlocked, by id. `MatchRewards.creditPvp` has credited
+ *   achievements since PvP was refereed — `RULES_W` counts a rule win whoever was on the other side
+ *   of it — and none of them had anywhere to be announced, so a player unlocked them without being
+ *   told. Ids rather than achievements, on the same argument `RewardSummary` makes: an unlock rule
+ *   is data both ends hold, and putting the catalogue on the wire once per match says what one
+ *   string already says.
+ * @property questIds the daily quests this match finished, by id. Same argument, same catalogue.
  */
 @Serializable
 data class PvpOutcome(
@@ -293,6 +327,8 @@ data class PvpOutcome(
     val picksOwed: Int = 0,
     val pickFrom: List<Int> = emptyList(),
     val claimDeadline: Long? = null,
+    val achievementIds: List<String> = emptyList(),
+    val questIds: List<String> = emptyList(),
 )
 
 /**

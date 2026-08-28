@@ -20,9 +20,9 @@ published into their own `~/.m2` — from a server build that only certain lapto
 Here, both consumers resolve the same artifact the same way, which is what makes the server
 buildable by CI and therefore deployable at all.
 
-| Consumer | Uses it for |
-|---|---|
-| [AS3-Triple-Triad](https://github.com/korobetski/AS3-Triple-Triad) | playing the match |
+| Consumer                                               | Uses it for |
+|--------------------------------------------------------|---|
+| [tto-client](https://github.com/korobetski/tto-client) | playing the match |
 | [tto-server](https://github.com/korobetski/tto-server) | replaying it, and deciding the score |
 
 ## Targets
