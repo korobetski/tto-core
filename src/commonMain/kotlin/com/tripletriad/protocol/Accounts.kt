@@ -34,11 +34,16 @@ import kotlinx.serialization.Serializable
  *   by the server, so `Kuplu` and `kuplu` are the same account and cannot both be created.
  * @property password never stored, never logged, never echoed back in any response. The server
  *   keeps only a hash — see the server's `PasswordHasher`.
+ * @property email where a confirmation code and a forgotten-password code are sent. Null on a
+ *   sign-in, which carries no address at all: the account is found by [username], and asking for
+ *   the address again would be one more thing to get wrong for no gain. Required on a
+ *   registration, and the server is the check that counts — see [looksValidToRegister].
  */
 @Serializable
 data class Credentials(
     val username: String,
     val password: String,
+    val email: String? = null,
 ) {
     /**
      * Whether these could possibly be valid, checked **before** they are sent.
@@ -50,6 +55,16 @@ data class Credentials(
      */
     fun looksValid(): Boolean =
         username.trim().length in USERNAME_LENGTH && password.length in PASSWORD_LENGTH
+
+    /**
+     * The same question for a **registration**, which additionally carries an address.
+     *
+     * Separate from [looksValid] rather than folded into it, because the two requests genuinely
+     * differ: a sign-in has no address to check and never will, and a single predicate that
+     * accepted a null email would stop being able to refuse one that is missing.
+     */
+    fun looksValidToRegister(): Boolean =
+        looksValid() && email != null && looksLikeEmail(email)
 
     companion object {
         /**
@@ -71,6 +86,40 @@ data class Credentials(
          * player is told about rather than one that quietly makes their long password shorter.
          */
         val PASSWORD_LENGTH = 8..72
+
+        /**
+         * The longest address an SMTP envelope may carry, and the shortest one that can exist.
+         *
+         * 254 is the RFC 5321 limit on a path, which is the number that actually bites: an address
+         * longer than that cannot be delivered whatever anyone here thinks of it.
+         */
+        val EMAIL_LENGTH = 6..254
+
+        /**
+         * Whether this could possibly be an address — **deliberately close to nothing**.
+         *
+         * There is a well-known regex for RFC 5322 and it is several thousand characters long, and
+         * every abbreviation of it in the wild rejects addresses that are legal and delivered every
+         * day: a plus, an apostrophe, a new top-level domain, a domain with no dot at all on an
+         * intranet. A form that refuses somebody's real address is a worse failure than one that
+         * accepts a typo, because the typo is caught two seconds later by the code that does not
+         * arrive, and the refusal has no remedy at all.
+         *
+         * So this rejects what is certainly not an address — no `@`, nothing on one side of it,
+         * whitespace, a length no envelope can carry — and lets the mail itself be the real test.
+         * That is the same division of labour as [looksValid] against the server: this is here to
+         * catch a slip without a round trip, not to be an authority.
+         */
+        fun looksLikeEmail(value: String): Boolean {
+            if (value.length !in EMAIL_LENGTH) return false
+            if (value.any { it.isWhitespace() }) return false
+            val at = value.indexOf('@')
+            // `lastIndexOf` too, so exactly one `@` — a quoted local part may legally contain a
+            // second one, and refusing that is the one strictness worth keeping: it is vanishingly
+            // rare and a second `@` is overwhelmingly a typo.
+            if (at <= 0 || at != value.lastIndexOf('@')) return false
+            return at < value.length - 1
+        }
     }
 }
 
@@ -98,11 +147,22 @@ data class Session(
  * [save] and [stats] are sent together because they are written together — a verified match updates
  * both in one transaction — and a client holding one without the other would show a profile whose
  * win count disagreed with its own match list.
+ *
+ * @property email the address on the account, echoed back so a client can say *we wrote to
+ *   this* — which is the whole remedy for the commonest failure of a confirmation flow, an
+ *   address typed wrong and no way to find out. Always the caller's own: every endpoint that
+ *   answers with a [PlayerState] answers about the bearer of the token, never about a peer.
+ * @property verified whether that address has been confirmed. Defaults to **true**, which is the
+ *   compatible answer rather than the safe-looking one: a client reads this only to decide
+ *   whether to nag, the server is what actually refuses, and an older deployment that has never
+ *   heard of confirmation must not make every client display a warning it cannot act on.
  */
 @Serializable
 data class PlayerState(
     val save: GameSave,
     val stats: PlayerStats = PlayerStats(),
+    val email: String? = null,
+    val verified: Boolean = true,
 )
 
 /**
@@ -219,6 +279,71 @@ data class RewardSummary(
     val questIds: List<String> = emptyList(),
 )
 
+/**
+ * A code typed back in, for either of the two things a code is sent for.
+ *
+ * ### Why a code and not a link
+ *
+ * A link needs the server to serve a page and the app to be handed the result of it — a deep link
+ * on Android, a custom scheme on iOS, and on the desktop nothing that works at all. A six-digit
+ * code needs none of that: the same screen works on all three targets, including the iOS app that
+ * has never been built. The cost is that a code can be guessed, which is why the server bounds
+ * both the attempts and the lifetime rather than treating it as a secret on its own.
+ *
+ * @property code as typed, spaces and all — the server trims. A player reading six digits off a
+ *   phone types them in groups, and refusing that would be refusing them for being human.
+ */
+@Serializable
+data class AccountCode(val code: String) {
+    companion object {
+        /**
+         * Six digits: short enough to read off a screen and retype, long enough that guessing it
+         * is hopeless once the attempts are bounded. A million possibilities against five tries is
+         * a one-in-two-hundred-thousand chance, and the *rate limit* is what makes that final —
+         * see the server's own note on why the two must ship together.
+         */
+        const val LENGTH = 6
+
+        fun looksValid(code: String): Boolean {
+            val trimmed = code.filterNot { it.isWhitespace() }
+            return trimmed.length == LENGTH && trimmed.all { it.isDigit() }
+        }
+    }
+}
+
+/**
+ * *I have forgotten my password, and this is who I am.*
+ *
+ * Keyed by username rather than by address, because the username is what a player of this game
+ * knows — it is their character's name, on screen every session. It is also the only one of the two
+ * the account is actually keyed by.
+ *
+ * The server answers this **the same way whichever answer is true**: an account that does not exist
+ * and an account that does both get 202 and no detail. Otherwise the form becomes a way of asking
+ * which usernames are registered, which is the same leak [AccountError.INVALID_CREDENTIALS] exists
+ * to close on the sign-in.
+ */
+@Serializable
+data class PasswordResetRequest(val username: String)
+
+/**
+ * The code, and the password to put in place of the forgotten one.
+ *
+ * Carries the username again rather than leaning on a session, because there is no session: the
+ * whole point of this flow is that the player cannot get one. The code is what authenticates it,
+ * and it is bound to the account the server sent it to — a code for one account cannot reset
+ * another, whatever this field says.
+ */
+@Serializable
+data class PasswordReset(
+    val username: String,
+    val code: String,
+    val password: String,
+) {
+    fun looksValid(): Boolean =
+        AccountCode.looksValid(code) && password.length in Credentials.PASSWORD_LENGTH
+}
+
 /** Why a request about an account was refused. Machine-readable, so wording can change freely. */
 @Serializable
 enum class AccountError {
@@ -233,6 +358,40 @@ enum class AccountError {
 
     /** The bearer token is absent, unknown, or past its expiry. */
     UNAUTHENTICATED,
+
+    /** The address is already on another account. Only ever answered to a registration. */
+    EMAIL_TAKEN,
+
+    /** A registration arrived with no address, or one [Credentials.looksLikeEmail] refuses. */
+    MALFORMED_EMAIL,
+
+    /**
+     * The account is real and the password was right, but the address has not been confirmed and
+     * the thing being asked for requires it. Never answered to a sign-in: signing in is how a
+     * player reaches the screen that lets them confirm.
+     */
+    EMAIL_UNVERIFIED,
+
+    /** The code is wrong, already spent, or past its lifetime — deliberately not saying which. */
+    INVALID_CODE,
+
+    /**
+     * Too many of these, too fast.
+     *
+     * Sent for a code retyped five times and for a resend asked for twice in a minute, because
+     * both are the same answer: *wait*. Distinguishing them would tell someone guessing codes
+     * exactly how close they are to the ceiling.
+     */
+    TOO_MANY_REQUESTS,
+
+    /**
+     * The account has not reached the level this needs — see [Unlocks].
+     *
+     * A client already knows the rule and greys the door, so reaching this means either a client
+     * that did not check or one that was told a different threshold by a different deployment.
+     * Both are ordinary, and neither may be trusted, which is why the check is here at all.
+     */
+    NOT_UNLOCKED,
 }
 
 /**

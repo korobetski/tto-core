@@ -37,6 +37,10 @@ import kotlinx.serialization.Serializable
  *   — the database is down — which is a different thing to tell a player than "unreachable", and
  *   they are different things to do about it.
  * @property release the client build this deployment publishes, when it publishes one.
+ * @property unlocks the levels this deployment gates player-to-player play and trade at. Sent
+ *   rather than compiled into both ends, so tuning the number is a configuration change instead of
+ *   a coordinated release — see [Unlocks]. A client draws what it is told; the server refuses on
+ *   its own copy, which is the copy that counts.
  */
 @Serializable
 data class ServerInfo(
@@ -45,6 +49,7 @@ data class ServerInfo(
     val minimumClient: AppVersion,
     val ready: Boolean = true,
     val release: ClientRelease? = null,
+    val unlocks: Unlocks = Unlocks(),
 ) {
     /**
      * Whether [client] may talk to this server.
