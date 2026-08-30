@@ -3,6 +3,7 @@ package com.tripletriad.data
 import com.tripletriad.model.Card
 import com.tripletriad.model.CoinFlip
 import com.tripletriad.model.Deck
+import com.tripletriad.model.DeckLimits
 import com.tripletriad.model.GameRules
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.HAND_SIZE
@@ -77,7 +78,8 @@ object PveMatches {
         catalog: CardCatalog,
         format: Format,
         random: Random = Random.Default,
-        plan: MatchPlan = MatchPlan(rulesFor(npc, format, random), playerDeck(profile)),
+        plan: MatchPlan =
+            MatchPlan(rulesFor(npc, format, random), playerDeck(profile, catalog.byId)),
         forcedFlip: CoinFlip? = null,
     ): PveMatch {
         val (rules, deck) = plan
@@ -144,6 +146,11 @@ object PveMatches {
      * stored deck can become unaffordable without being edited — nothing stops a copy being spent
      * elsewhere — so this is a live condition rather than a stale one. See [Deck.isAffordable].
      *
+     * [DeckLimits]' star-rank caps are checked here too, and are a live condition in the same way:
+     * a deck built before the caps existed, or before a set moved a card's rank, is legal until it
+     * is looked at. Offering it and having the server refuse the match is the failure mode all
+     * three of these checks exist to avoid.
+     *
      * Indexed, and the index is the **save slot** rather than the position in this list: an unnamed
      * deck is labelled by its slot number ([DeckSelectorScreen]), so filtering out the incomplete
      * ones would otherwise rename the survivors.
@@ -153,9 +160,10 @@ object PveMatches {
         catalog: CardCatalog,
         format: Format,
     ): List<IndexedValue<Deck>> {
-        val ids = catalog.admittedBy(format).mapTo(mutableSetOf()) { it.id }
+        val admitted = catalog.admittedBy(format).associateBy { it.id }
         return profile.decks.withIndex().filter { (_, deck) ->
-            deck.isComplete && ids.containsAll(deck.cards) && deck.isAffordable(profile.cards)
+            deck.isComplete && admitted.keys.containsAll(deck.cards) &&
+                deck.isAffordable(profile.cards) && deck.isLegal(admitted)
         }
     }
 
@@ -183,10 +191,27 @@ object PveMatches {
      * [playableDecks] has always made this check and its KDoc is where the reasoning is: a stored
      * deck can become unaffordable without being edited. The two lookups simply disagreed about
      * what a usable deck is, and the one that skipped the check is the one that *deals*.
+     *
+     * ### Legal too, which is why this takes a card table
+     *
+     * [DeckLimits]' star-rank caps cannot be read off a list of ids, so the argument had to be
+     * added rather than defaulted — and it is required, deliberately, so that every caller that
+     * deals a hand is made to say which table it is dealing from. The alternative was a lookup that
+     * silently skips the cap when nobody passes one, which is the shape of a rule that is not
+     * enforced.
+     *
+     * **The bare-collection fallback is filtered too** ([DeckLimits.firstLegalHand]). Five owned
+     * cards was already the answer to "this profile has no usable deck"; handing back five the
+     * server would then refuse would make the fallback itself the dead end it exists to avoid.
+     *
+     * @param cards id to card — `CardCatalog.byId`, or a format's admitted subset when the caller
+     *   has one. Only the ranks are read, so the two answer alike.
      */
-    fun playerDeck(profile: GameSave): List<Int> =
-        profile.decks.firstOrNull { it.isComplete && it.isAffordable(profile.cards) }?.cards
-            ?: profile.ownedCardIds().take(HAND_SIZE)
+    fun playerDeck(profile: GameSave, cards: Map<Int, Card>): List<Int> =
+        profile.decks
+            .firstOrNull { it.isComplete && it.isAffordable(profile.cards) && it.isLegal(cards) }
+            ?.cards
+            ?: DeckLimits.firstLegalHand(profile.ownedCardIds(), cards)
 
     /**
      * The five cards a **named** deck slot plays, falling back to [playerDeck] when it cannot.
@@ -213,18 +238,19 @@ object PveMatches {
      *
      * The same fallback answers it. An unaffordable deck is an unusable choice like any other, so
      * it quietly becomes no choice, the five cards stay in the deck the player built, and the deck
-     * comes back the moment another copy is obtained.
+     * comes back the moment another copy is obtained. A deck over a [DeckLimits] cap is refused by
+     * the same clause and for the same reason.
      *
      * @param deck a slot in [GameSave.decks]. Any index outside it — the protocol's `ANY_DECK`
      *   among them — means nothing was chosen and leaves it to [playerDeck]. Named that way
      *   rather than by importing the constant: `protocol` already depends on this package, and
      *   a link back would close the circle for the sake of one KDoc reference.
      */
-    fun playerDeck(profile: GameSave, deck: Int): List<Int> =
+    fun playerDeck(profile: GameSave, deck: Int, cards: Map<Int, Card>): List<Int> =
         profile.decks.getOrNull(deck)
-            ?.takeIf { it.isComplete && it.isAffordable(profile.cards) }
+            ?.takeIf { it.isComplete && it.isAffordable(profile.cards) && it.isLegal(cards) }
             ?.cards
-            ?: playerDeck(profile)
+            ?: playerDeck(profile, cards)
 
     private fun resolve(ids: List<Int>, cards: Map<Int, Card>, what: String): List<Card> {
         val resolved = ids.mapNotNull { cards[it] }

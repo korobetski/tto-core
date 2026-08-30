@@ -47,20 +47,26 @@ fun clampPower(value: Int): Int = value.coerceIn(MIN_EFFECTIVE_POWER, ACE_POWER)
  *
  * Two edges of that sentence are decisions rather than details, and both were settled deliberately:
  *
- * - **A card in hand neither contributes nor receives.** The AS3 `playerPanel.applyAscension`
- *   (`:153-178`) walks all five cards and adjusts the ones in hand too, so a player watched their
- *   hand's numbers drift while holding it. Here the modifier begins when the card lands. A hand
- *   card shows what is printed on it, which is also what it will be worth if the board does not
- *   change before it is played.
- * - **A card counts itself from the moment it is placed.** The original ran `ascensionPhase`
- *   *after* the flips (`TTOCore.as:171`), so the card that had just been played resolved its own
- *   captures without its own contribution — it was on the board and not yet counted. This port ran
- *   it that way too and no longer does. The rule now reads as one sentence with no exception in it,
- *   and — since the modifier is drawn on the board — a badge saying `+3` on a card that attacked as
- *   `+2` would be a screen contradicting itself at the only moment anybody is watching.
+ * - **A card in hand does not contribute, but it does receive.** Only cards on the board move the
+ *   tally — a hand is not a board and holding a beast is not playing one. What a hand card *shows*
+ *   is another matter: the tally applies to it as it does to any card of the type, so five cards
+ *   waiting to be played display the modifier they will fight with. That is the AS3
+ *   `playerPanel.applyAscension` (`:153-178`) behaviour, and it is the honest one — a player
+ *   choosing a card is choosing the number it will actually attack with, not the number printed on
+ *   a board state that has already moved on.
+ * - **A card does not count itself while its own placement resolves.** The tally that decides the
+ *   captures is the one from before the card landed; its own ±1 is recorded afterwards, and is
+ *   worth something only from the next placement onward. That is `TTOCore.as:171`, where
+ *   `ascensionPhase` runs *after* the flips, and it is the order the rule is written in: you play
+ *   a card **and then** the board's bonus moves.
  *
- * The second is a change to what the engine computes; [com.tripletriad.protocol.CURRENT_VERSION]
- * carries it.
+ * **Elemental is the exception and runs the other way round.** Its ±1 is a property of the cell,
+ * not a tally the placement adds to, so a card is standing on its element from the instant it is
+ * placed and attacks with the modifier already applied. See [elementalModifier].
+ *
+ * The second bullet is a change to what the engine computes;
+ * [com.tripletriad.protocol.CURRENT_VERSION] and
+ * [com.tripletriad.protocol.TRANSCRIPT_VERSION] carry it.
  */
 data class AscensionTally(val counts: Map<CardType, Int> = emptyMap()) {
     operator fun get(type: CardType?): Int = if (type == null) 0 else counts[type] ?: 0

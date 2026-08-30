@@ -7,6 +7,7 @@ import com.tripletriad.data.NpcCatalog
 import com.tripletriad.data.PveMatches
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.Deck
+import com.tripletriad.model.DeckLimits
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.MatchAi
 import com.tripletriad.model.MatchState
@@ -105,6 +106,12 @@ object TranscriptVerifier {
         // `Deck.isAffordable` and § 1 of docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md.
         val overdrawn = transcript.deck.groupingBy { it }.eachCount()
             .filter { (id, used) -> used > (owned[id] ?: 0) }
+        // The deck-building caps, asked of the declared deck rather than of a saved slot: an
+        // offline match names its own five cards, so this is the only place the rule can be put to
+        // a transcript at all. Read off *this build's* card table, which is the same table the
+        // replay below deals from — a rank is a property of the card, so a client that disagrees
+        // about one is a client whose replay would disagree too. See `DeckLimits`.
+        val overRank = DeckLimits.overLimit(transcript.deck, cards.byId)
 
         return when {
             npc == null -> rejected(
@@ -117,6 +124,15 @@ object TranscriptVerifier {
                 overdrawn.entries.joinToString(
                     prefix = "deck uses more copies than are owned: ",
                 ) { (id, used) -> "card $id used $used, owned ${owned[id] ?: 0}" },
+            )
+
+            overRank.isNotEmpty() -> rejected(
+                RejectionReason.DECK_ILLEGAL,
+                overRank.entries.joinToString(
+                    prefix = "deck breaks the star-rank caps: ",
+                ) { (rarity, used) ->
+                    "$used cards of rank $rarity, at most ${DeckLimits.limitOf(rarity)}"
+                },
             )
 
             else -> dealAndReplay(transcript, cards, npc, owned, format)

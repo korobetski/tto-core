@@ -7,6 +7,7 @@ import com.tripletriad.model.GameSave
 import com.tripletriad.model.Item
 import com.tripletriad.model.MiscItem
 import com.tripletriad.model.PotionItem
+import com.tripletriad.model.PouchItem
 import kotlin.random.Random
 
 /**
@@ -58,6 +59,18 @@ sealed interface ItemUse {
 
     /** A potion was drunk and raised a boon. */
     data class BoonRaised(override val save: GameSave) : ItemUse
+
+    /**
+     * An auction pouch was opened and its [mgp] went into the purse.
+     *
+     * @property cardId the card whose sale this was, so the confirmation can name it rather than
+     *   announcing a sum from nowhere.
+     */
+    data class PouchOpened(
+        override val save: GameSave,
+        val mgp: Int,
+        val cardId: Int,
+    ) : ItemUse
 
     /** The item is in the bag but does nothing — [Item.useable] is false. */
     data class NotUseable(override val save: GameSave) : ItemUse
@@ -168,6 +181,9 @@ object Inventory {
      *   distinction is the whole point of a pack. `BoosterItem.open()` draws several ids from a
      *   fixed pool with a strong low-index bias, guaranteeing the last — see there.
      * - A **potion** raises its boon and is consumed.
+     * - A **pouch** pays its MGP into the purse and is consumed. It is the one item whose whole
+     *   purpose is to be opened; see [com.tripletriad.model.PouchItem] for why an auction's money
+     *   waits in the bag rather than landing in the purse while nobody is looking.
      * - A **card item** adds its card to the collection and is consumed. `CardItem` is `useable` in
      *   the AS3, and this is what using it can only have meant.
      * - Anything else is [ItemUse.NotUseable] and the profile is untouched.
@@ -202,12 +218,19 @@ object Inventory {
             is PotionItem ->
                 ItemUse.BoonRaised(consumed.copy(boons = consumed.boons.raised(item.modifier)))
 
+            is PouchItem ->
+                ItemUse.PouchOpened(consumed.withMgp(item.mgp), item.mgp, item.cardId)
+
             is MiscItem -> ItemUse.NotUseable(save)
         }
     }
 
     /**
-     * The bag in display order: card items first by id, then boosters, then potions, then the rest.
+     * The bag in display order: pouches, then card items by id, then boosters, potions, the rest.
+     *
+     * Pouches lead because they are the only entry that exists to be opened and then gone. A
+     * player coming back to a sale that settled overnight should find the money first, not below
+     * a column of packs.
      *
      * `InventoryScreen.sortBag()`'s job. The exact AS3 comparator is not reproduced — it sorts the
      * raw JSON objects on `type` as a string, which orders them `item-type-booster`,
@@ -229,11 +252,12 @@ object Inventory {
      * The groups the inventory screen shows, in the order it shows them.
      *
      * An enum rather than a function returning 0..3, so the order is stated once, in one place, and
-     * reordering the display means reordering these four lines.
+     * reordering the display means reordering these five lines.
      */
-    private enum class Section { CARDS, BOOSTERS, POTIONS, OTHER }
+    private enum class Section { POUCHES, CARDS, BOOSTERS, POTIONS, OTHER }
 
     private fun section(item: Item): Section = when (item) {
+        is PouchItem -> Section.POUCHES
         is CardItem -> Section.CARDS
         is BoosterItem -> Section.BOOSTERS
         is PotionItem -> Section.POTIONS
@@ -242,6 +266,7 @@ object Inventory {
 
     /** Rank within a section: card id, then declaration order for the two enum-keyed kinds. */
     private fun withinSection(item: Item): Int = when (item) {
+        is PouchItem -> item.cardId
         is CardItem -> item.cardId
         is BoosterItem -> item.boosterType.ordinal
         is PotionItem -> item.potionType.ordinal

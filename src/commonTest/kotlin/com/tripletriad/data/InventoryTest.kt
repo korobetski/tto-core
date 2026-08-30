@@ -4,10 +4,12 @@ import com.tripletriad.model.BoosterItem
 import com.tripletriad.model.BoosterType
 import com.tripletriad.model.Card
 import com.tripletriad.model.CardItem
+import com.tripletriad.model.CardOrigin
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.MiscItem
 import com.tripletriad.model.PotionItem
 import com.tripletriad.model.PotionType
+import com.tripletriad.model.PouchItem
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -285,9 +287,70 @@ class InventoryTest {
         assertEquals(empty, used.save)
     }
 
-    /** `InventoryScreen.sortBag()`'s job: cards, then packs, then potions, then the rest. */
+    @Test
+    fun usingAPouchPaysItIntoThePurseAndConsumesIt() {
+        val pouch = PouchItem(mgp = 4200, cardId = 50, lotId = "lot-7")
+        val save = Inventory.add(empty, pouch)
+
+        val opened = assertIs<ItemUse.PouchOpened>(Inventory.use(save, pouch))
+
+        assertEquals(4200, opened.mgp)
+        assertEquals(50, opened.cardId)
+        assertEquals(empty.mgp + 4200, opened.save.mgp)
+        assertTrue(opened.save.bag.isEmpty())
+    }
+
+    /**
+     * The double-tap, at the layer that can actually stop it.
+     *
+     * The client guards this with a `busy` flag and the server with an operation id, and both are
+     * worth having — but neither is where the invariant lives. A pouch pays once because it is
+     * *consumed* by the payment, so a second attempt finds a bag that no longer holds it.
+     */
+    @Test
+    fun openingTheSamePouchTwicePaysOnce() {
+        val pouch = PouchItem(mgp = 4200, cardId = 50, lotId = "lot-7")
+        val save = Inventory.add(empty, pouch)
+
+        val once = assertIs<ItemUse.PouchOpened>(Inventory.use(save, pouch)).save
+        val twice = Inventory.use(once, pouch)
+
+        assertIs<ItemUse.NotUseable>(twice)
+        assertEquals(empty.mgp + 4200, twice.save.mgp, "paid once, not twice")
+    }
+
+    /** Two sales are two rows and two payouts, even for the same card at the same price. */
+    @Test
+    fun twoPouchesForTheSameSalePriceStayApart() {
+        val first = PouchItem(mgp = 4200, cardId = 50, lotId = "lot-7")
+        val second = PouchItem(mgp = 4200, cardId = 50, lotId = "lot-8")
+
+        val save = Inventory.addAll(empty, listOf(first, second))
+        assertEquals(2, save.bag.size)
+
+        val afterFirst = assertIs<ItemUse.PouchOpened>(Inventory.use(save, first)).save
+        val afterSecond = assertIs<ItemUse.PouchOpened>(Inventory.use(afterFirst, second)).save
+
+        assertEquals(empty.mgp + 8400, afterSecond.mgp)
+        assertTrue(afterSecond.bag.isEmpty())
+    }
+
+    /** A card the auction gave back is its own row: the two say different things. */
+    @Test
+    fun anUnsoldCardDoesNotMergeWithACopyFromAPack() {
+        val save = Inventory.addAll(
+            empty,
+            listOf(CardItem(50), CardItem(50, origin = CardOrigin.AUCTION_UNSOLD)),
+        )
+
+        assertEquals(2, save.bag.size)
+        assertTrue(save.bag.all { it.stack == 1 })
+    }
+
+    /** `InventoryScreen.sortBag()`'s job: pouches, cards, packs, potions, then the rest. */
     @Test
     fun theBagIsKeptInDisplayOrder() {
+        val pouch = PouchItem(mgp = 100, cardId = 3, lotId = "lot-1")
         val save = Inventory.addAll(
             empty,
             listOf(
@@ -296,11 +359,13 @@ class InventoryTest {
                 CardItem(50),
                 BoosterItem(BoosterType.GOLD),
                 CardItem(3),
+                pouch,
             ),
         )
 
         assertEquals(
             listOf(
+                pouch,
                 CardItem(3),
                 CardItem(50),
                 BoosterItem(BoosterType.GOLD),

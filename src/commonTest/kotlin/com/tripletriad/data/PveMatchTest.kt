@@ -3,6 +3,7 @@ package com.tripletriad.data
 import com.tripletriad.model.Card
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.Deck
+import com.tripletriad.model.DeckLimits
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.HAND_SIZE
 import com.tripletriad.model.MatchIntroStep
@@ -26,7 +27,7 @@ class PveMatchTest {
     /** A block-1 card id — the shipped `ff14` table. Ids are global; these fixtures are not. */
     private fun ff14(number: Int) = Card.idFor(block = 1, number = number)
 
-    private fun card(block: Int, number: Int) = Card(
+    private fun card(block: Int, number: Int, rarity: Int = 1) = Card(
         id = Card.idFor(block, number),
         nameKey = "STR_TEST_$block-$number",
         name = "Test $block-$number",
@@ -34,12 +35,17 @@ class PveMatchTest {
         right = 5,
         bottom = 5,
         left = 5,
-        rarity = 1,
+        rarity = rarity,
     )
 
     private val catalog = CardCatalog(
         sets = TEST_SETS,
-        cards = (1..40).map { card(TestFormats.FF14_BLOCK, it) } +
+        cards = (1..35).map { card(TestFormats.FF14_BLOCK, it) } +
+            // The top of the table, and the only cards here that are not rank 1: two five-stars
+            // and three four-stars, so a fixture can build a deck `DeckLimits` refuses. Everything
+            // a case in this file names is below 36, which keeps the rest of them legal in silence.
+            (36..37).map { card(TestFormats.FF14_BLOCK, it, rarity = 5) } +
+            (38..40).map { card(TestFormats.FF14_BLOCK, it, rarity = 4) } +
             (1..30).map { card(TestFormats.FF8_BLOCK, it) },
     )
 
@@ -151,7 +157,7 @@ class PveMatchTest {
 
         val split = Random(7).let { random ->
             val rules = PveMatches.rulesFor(roulette, TestFormats.ff14, random)
-            val plan = MatchPlan(rules, PveMatches.playerDeck(save))
+            val plan = MatchPlan(rules, PveMatches.playerDeck(save, catalog.byId))
             PveMatches.assemble(save, roulette, catalog, TestFormats.ff14, random, plan)
         }
 
@@ -184,7 +190,68 @@ class PveMatchTest {
 
         assertTrue(PveMatches.playableDecks(save, catalog, TestFormats.ff14).isEmpty())
         // …and still has something to play, which is what the fallback is for.
-        assertEquals(HAND_SIZE, PveMatches.playerDeck(save).size)
+        assertEquals(HAND_SIZE, PveMatches.playerDeck(save, catalog.byId).size)
+    }
+
+    /**
+     * A deck over a [DeckLimits] cap is not offered, for the reason an unaffordable one is not.
+     *
+     * A deck can arrive in this state without being edited — it was saved before the caps existed,
+     * or a set moved a card's rank — so this is a live condition and not a stale one. Offering it
+     * and letting the deal refuse it would turn the rule into a rejection the player cannot act on.
+     */
+    @Test
+    fun aDeckOverAStarRankCapIsNotPlayable() {
+        val save = profile(
+            cards = ((1..12) + (36..40)).associate { ff14(it) to 1 },
+            decks = listOf(
+                // Two five-stars, which is one more than a deck may name.
+                Deck("Greedy", listOf(36, 37, 1, 2, 3).map(::ff14)),
+                Deck("Legal", listOf(36, 38, 39, 1, 2).map(::ff14)),
+            ),
+        )
+
+        val playable = PveMatches.playableDecks(save, catalog, TestFormats.ff14)
+
+        assertEquals(listOf(1), playable.map { it.index })
+    }
+
+    /** The deal refuses it too: the caps are checked where the hand is drawn, not just shown. */
+    @Test
+    fun aDeckOverAStarRankCapFallsBackWhenItIsDealt() {
+        val legal = listOf(36, 38, 39, 1, 2).map(::ff14)
+        val save = profile(
+            cards = ((1..12) + (36..40)).associate { ff14(it) to 1 },
+            decks = listOf(
+                Deck("Greedy", listOf(36, 37, 1, 2, 3).map(::ff14)),
+                Deck("Legal", legal),
+            ),
+        )
+
+        assertEquals(legal, PveMatches.playerDeck(save, 0, catalog.byId), "the named slot is dealt")
+        assertEquals(legal, PveMatches.playerDeck(save, catalog.byId))
+        // Refused, not rewritten: the player's own five cards are still in the slot they built.
+        assertEquals(HAND_SIZE, save.decks[0].cards.size)
+    }
+
+    /**
+     * The bare-collection fallback obeys the caps as well.
+     *
+     * A profile with no usable deck is dealt five owned cards, and five the server would then
+     * refuse would make the fallback the dead end it exists to avoid.
+     * See [DeckLimits.firstLegalHand].
+     */
+    @Test
+    fun theFallbackHandIsLegalToo() {
+        val save = profile(
+            cards = (36..40).associate { ff14(it) to 1 } + ((1..3).associate { ff14(it) to 1 }),
+            decks = listOf(Deck("Partial", listOf(ff14(1)))),
+        )
+
+        val dealt = PveMatches.playerDeck(save, catalog.byId)
+
+        assertEquals(HAND_SIZE, dealt.size)
+        assertTrue(DeckLimits.isLegal(dealt, catalog.byId), "$dealt breaks a cap")
     }
 
     /** A named slot is played, which is how a refereed match honours a choice made in a lobby. */
@@ -196,7 +263,7 @@ class PveMatchTest {
             decks = listOf(Deck("First", (1..5).map(::ff14)), Deck("Second", second)),
         )
 
-        assertEquals(second, PveMatches.playerDeck(save, deck = 1))
+        assertEquals(second, PveMatches.playerDeck(save, 1, catalog.byId))
     }
 
     /**
@@ -212,9 +279,11 @@ class PveMatchTest {
             decks = listOf(Deck("Full", (1..5).map(::ff14)), Deck("Gutted", listOf(ff14(6)))),
         )
 
-        assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = 1))
-        assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = ANY_DECK))
-        assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = 99))
+        val fallback = PveMatches.playerDeck(save, catalog.byId)
+
+        assertEquals(fallback, PveMatches.playerDeck(save, 1, catalog.byId))
+        assertEquals(fallback, PveMatches.playerDeck(save, ANY_DECK, catalog.byId))
+        assertEquals(fallback, PveMatches.playerDeck(save, 99, catalog.byId))
     }
 
     /**
@@ -238,8 +307,10 @@ class PveMatchTest {
             decks = listOf(Deck("Full", (6..10).map(::ff14)), Deck("Wagered", (1..5).map(::ff14))),
         )
 
-        assertFalse(lost in PveMatches.playerDeck(save, deck = 1), "the lost card was dealt")
-        assertEquals(PveMatches.playerDeck(save), PveMatches.playerDeck(save, deck = 1))
+        val dealt = PveMatches.playerDeck(save, 1, catalog.byId)
+
+        assertFalse(lost in dealt, "the lost card was dealt")
+        assertEquals(PveMatches.playerDeck(save, catalog.byId), dealt)
         // And the deck itself is untouched: refused, not silently edited down to four cards.
         assertEquals(HAND_SIZE, save.decks[1].cards.size)
     }
@@ -253,7 +324,7 @@ class PveMatchTest {
             decks = listOf(Deck("Wagered", (1..5).map(::ff14)), Deck("Full", playable)),
         )
 
-        assertEquals(playable, PveMatches.playerDeck(save))
+        assertEquals(playable, PveMatches.playerDeck(save, catalog.byId))
     }
 
     /** The complete deck is played, not the first five cards owned. */

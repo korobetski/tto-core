@@ -128,6 +128,9 @@ data class Deck(
      *
      * The looser statement is still true of a *hand*, which is a different thing: `RULE_SWAP` can
      * produce a genuine duplicate mid-match whatever the deck was built from.
+     *
+     * [DeckLimits]' star-rank caps are bounded elsewhere for the same reason and in the same place:
+     * this method has no card table to read a rank out of, so the question is [isLegal]'s.
      */
     fun plusCard(cardId: Int): Deck =
         if (cards.size >= HAND_SIZE) this else copy(cards = cards + cardId)
@@ -151,6 +154,23 @@ data class Deck(
      */
     fun isAffordable(owned: Map<Int, Int>): Boolean =
         cards.groupingBy { it }.eachCount().all { (id, used) -> used <= (owned[id] ?: 0) }
+
+    /**
+     * True when this deck breaks none of [DeckLimits]' star-rank caps.
+     *
+     * The second half of "is this deck legal", and separate from [isAffordable] because the two ask
+     * different sources: affordability is a question about the *profile*, legality is a question
+     * about the *card table*. A caller that has both asks both — `PveMatches.playableDecks` and
+     * `TranscriptVerifier` are the two that must.
+     *
+     * A deck stored before the caps existed can answer false without ever having been edited, which
+     * is the same live condition [isAffordable] describes: it is refused where it is dealt and
+     * repaired in the editor, never rewritten underneath the player.
+     *
+     * @param cards id to card — `CardCatalog.byId`. Ids it does not resolve are not counted; see
+     *   [DeckLimits.tally].
+     */
+    fun isLegal(cards: Map<Int, Card>): Boolean = DeckLimits.isLegal(this.cards, cards)
 
     /** The same deck without the card at position [at]. Unchanged if there is none. */
     fun minusCardAt(at: Int): Deck =
@@ -608,8 +628,10 @@ data class GameSave(
      * ### What stays believed, and always will
      *
      * **`decks`** — arranging five cards you already own is the player's to decide, and a deck
-     * naming cards they do not hold is refused where it matters: `Deck.isAffordable`, at the point
-     * a match is dealt. **`avatarId`** and the rest of the presentation likewise. The test is not
+     * that breaks a rule is refused where it matters: `Deck.isAffordable` and `Deck.isLegal`, at
+     * the point a match is dealt. Refusing to *store* one instead would mean a client that saves
+     * decks could be told its profile is invalid over a slot it is not even about to play.
+     * **`avatarId`** and the rest of the presentation likewise. The test is not
      * "could a client change this" but "is it worth anything to anybody else".
      *
      * **`startedMatches`/`endedMatches`** — the client moves these when a match begins and when it

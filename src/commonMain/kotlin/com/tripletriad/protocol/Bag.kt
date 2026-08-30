@@ -113,6 +113,18 @@ sealed interface ItemEffect {
     data object BoonRaised : ItemEffect
 
     /**
+     * An auction pouch was opened and paid out.
+     *
+     * @property mgp what went into the purse. On the wire even though the profile beside it
+     *   already shows the new balance: a client cannot tell a payout from any other change by
+     *   diffing two purses, and "+4 200 MGP" is the whole of what the player opened it to see.
+     * @property cardId the card that was sold, so the confirmation can name it.
+     */
+    @Serializable
+    @SerialName("pouch-opened")
+    data class PouchOpened(val mgp: Int, val cardId: Int) : ItemEffect
+
+    /**
      * Nothing happened: the item does nothing, or the bag does not hold it.
      *
      * The two are deliberately one answer, because they are one answer to the *client*: it asked
@@ -130,6 +142,7 @@ fun ItemUse.effect(): ItemEffect = when (this) {
     is ItemUse.PackOpened -> ItemEffect.PackOpened(cardIds, newCardIds)
     is ItemUse.CardDrawn -> ItemEffect.CardDrawn(cardId, wasNew)
     is ItemUse.BoonRaised -> ItemEffect.BoonRaised
+    is ItemUse.PouchOpened -> ItemEffect.PouchOpened(mgp, cardId)
     is ItemUse.NotUseable -> ItemEffect.NotUseable
 }
 

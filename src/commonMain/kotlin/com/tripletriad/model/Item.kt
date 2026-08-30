@@ -418,6 +418,29 @@ sealed class Item {
 }
 
 /**
+ * Why a [CardItem] is in the bag, when that changes what it says.
+ *
+ * The entry behaves identically either way — a card to use, which puts it in the collection. What
+ * differs is the sentence under it, and a card handed back by an auction that found no buyer is
+ * worth telling apart from one that fell out of a pack: it is the only notice the seller gets that
+ * their lot ended in nothing.
+ *
+ * This is part of the item's identity, so `Inventory.add` does **not** merge the two — a single row
+ * carrying both descriptions could only show one of them, and it would be the wrong one half the
+ * time.
+ */
+@Serializable
+enum class CardOrigin(val descriptionKey: String) {
+    /** Bought, drawn or awarded. The description every card item had before there was a second. */
+    @SerialName("plain")
+    PLAIN("APP_CARD_ITEM_DESC"),
+
+    /** Handed back when a lot closed without a sale. "Invendue aux enchères". */
+    @SerialName("auction-unsold")
+    AUCTION_UNSOLD("APP_CARD_ITEM_UNSOLD_DESC"),
+}
+
+/**
  * A card, held as an inventory entry rather than in the collection. `datas/CardItem.as`.
  *
  * Using one adds [cardId] to `Save.DATAS.CARDS`; that is the shop and reward path by which a card
@@ -433,6 +456,7 @@ sealed class Item {
 data class CardItem(
     @SerialName("card") val cardId: Int,
     override val stack: Int = 1,
+    @SerialName("origin") val origin: CardOrigin = CardOrigin.PLAIN,
 ) : Item() {
     init {
         requireValidStack()
@@ -450,7 +474,7 @@ data class CardItem(
      */
     override val iconId: String get() = "card_r1_icon"
 
-    override val descriptionKey: String get() = "APP_CARD_ITEM_DESC"
+    override val descriptionKey: String get() = origin.descriptionKey
 
     /**
      * **Not** what a card is worth. See [com.tripletriad.data.CardValue].
@@ -622,4 +646,77 @@ data class MiscItem(
     override val dropable: Boolean get() = true
 
     override fun withStack(count: Int): MiscItem = copy(stack = count)
+}
+
+/**
+ * The proceeds of an auction, as something to open rather than MGP already in the purse.
+ *
+ * ### Why the money arrives as an object
+ *
+ * A sale settles while the seller is asleep. Crediting the purse directly would mean a profile that
+ * silently gained several thousand MGP between two launches with nothing to say where it came from
+ * — and a settlement is exactly the moment worth telling somebody about. So the sweeper puts a
+ * pouch in the bag, the bag screen shows it, and opening it is the player's acknowledgement. It is
+ * the shape a bought card already had ([CardItem]), applied to the other half of the trade.
+ *
+ * ### Why it does not stack
+ *
+ * Two pouches are two sales, and merging them would produce one row worth the sum of both and named
+ * after only one of the cards — after which `Inventory.remove` drops the single entry and one of
+ * the two amounts is credited twice or not at all. [lotId] makes every pouch distinct even for two
+ * sales of the same card at the same price, and [stackable] is false so nothing tries.
+ *
+ * @property mgp what the seller cleared: the winning bid, with the buyer's fee already taken off
+ *   the buyer's side and the listing fee already spent when the lot opened. A settled figure, not
+ *   one to recompute — see `AuctionRules`.
+ * @property cardId the card that was sold, for the description ("...de la vente de la carte x").
+ *   The card itself is long gone to the buyer; this is a label.
+ * @property lotId the lot it settled. Carried so two pouches can never be the same object, and so a
+ *   support question about one payout has something to look up.
+ */
+@Serializable
+@SerialName("item-type-pouch")
+data class PouchItem(
+    @SerialName("mgp") val mgp: Int,
+    @SerialName("card") val cardId: Int,
+    @SerialName("lot") val lotId: String,
+) : Item() {
+    init {
+        require(mgp > 0) { "a pouch must hold something, was $mgp" }
+        require(cardId > 0) { "card id must be positive, was $cardId" }
+        require(lotId.isNotBlank()) { "a pouch must name the lot it settled" }
+    }
+
+    /** Always one. See this class's KDoc for why there is no such thing as two of a pouch. */
+    override val stack: Int get() = 1
+
+    /**
+     * The currency mark, which is the closest thing the imported sprite sheet holds to a purse.
+     *
+     * Named here rather than worked around in the UI: when a pouch sprite is imported this is the
+     * one line that changes.
+     */
+    override val iconId: String get() = "PGS"
+
+    /** Needs the card's name composed into it, the way [CardItem]'s does. Left to the UI. */
+    override val descriptionKey: String get() = "APP_POUCH_ITEM_DESC"
+
+    /** Zero, like everything the shop will not buy: [mgp] is what it holds, not what it fetches. */
+    override val value: Int get() = 0
+
+    /** Selling a purse for a fraction of what is inside it is a way to lose money by misclick. */
+    override val sellable: Boolean get() = false
+    override val stackable: Boolean get() = false
+    override val useable: Boolean get() = true
+
+    /** Discarding money somebody owed you is a support ticket, not a feature. */
+    override val dropable: Boolean get() = false
+
+    /**
+     * Itself, whatever is asked.
+     *
+     * [stackable] is false, so `Inventory` never merges a pouch and never asks for a count other
+     * than the one it has — the only call that reaches here is the `withStack(1)` identity check.
+     */
+    override fun withStack(count: Int): PouchItem = this
 }

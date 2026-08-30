@@ -31,6 +31,9 @@ class MatchSetupTest {
 
     private fun hand(vararg ids: Int) = ids.map(::card)
 
+    /** The same fixture at a capped rank — [DeckLimits] reads `rarity` and nothing else. */
+    private fun card(id: Int, rarity: Int) = card(id).copy(rarity = rarity)
+
     private val blueDeck = hand(1, 2, 3, 4, 5)
     private val redDeck = hand(6, 7, 8, 9, 10)
     private val collection = (1..30).map(::card)
@@ -94,6 +97,49 @@ class MatchSetupTest {
             MatchPreparation.randomHand(collection, Random(7)),
             MatchPreparation.randomHand(collection, Random(7)),
         )
+    }
+
+    /**
+     * Random draws under [DeckLimits], and the reason is an incentive rather than a rule.
+     *
+     * A hand spliced out of the *collection* and exempt from the caps would have made selling the
+     * way around them: dump every low card and the draw is forced into the five-ace hand the deck
+     * editor refuses to build.
+     */
+    @Test
+    fun aRandomHandIsDealtUnderTheStarRankCaps() {
+        val aces = (1..8).map { card(it, rarity = 5) } + (9..16).map { card(it, rarity = 4) }
+        val rich = aces + (17..30).map(::card)
+
+        for (seed in seeds) {
+            val drawn = MatchPreparation.randomHand(rich, Random(seed))
+
+            assertEquals(HAND_SIZE, drawn.size, "seed $seed")
+            assertTrue(DeckLimits.isLegal(drawn.map { it.id }, rich.associateBy { it.id }), "$seed")
+        }
+    }
+
+    /** The caps refuse a second ace, never the first: the rule promises nothing either way. */
+    @Test
+    fun aRandomHandCanStillDrawAnAce() {
+        val rich = (1..4).map { card(it, rarity = 5) } + (5..30).map(::card)
+
+        val withAnAce = seeds.count { seed ->
+            MatchPreparation.randomHand(rich, Random(seed)).any { it.rarity == 5 }
+        }
+
+        assertTrue(withAnAce > 0, "an ace must still be drawn when the shuffle offers one")
+    }
+
+    /**
+     * A collection that cannot field a legal five comes up short rather than dealing an illegal
+     * hand — the profile sold down to nothing but aces, which is the case the caps exist for.
+     */
+    @Test
+    fun aCollectionOfNothingButAcesCannotFillARandomHand() {
+        val aces = (1..8).map { card(it, rarity = 5) }
+
+        assertEquals(1, MatchPreparation.randomHand(aces, Random(1)).size)
     }
 
     // ---- Swap -------------------------------------------------------------
@@ -553,6 +599,27 @@ class MatchSetupTest {
         }
 
         assertTrue(dealtOutside > 0, "a Random hand must be able to leave the deck behind")
+    }
+
+    /**
+     * A rule may take the choice away; it may not refuse to deal.
+     *
+     * The draw comes up short for a collection the caps cannot make five legal cards out of, and
+     * the chosen deck is the answer there — even when that deck breaks the caps itself, because
+     * it is the deck the server already agreed to deal.
+     */
+    @Test
+    fun randomFallsBackToTheChosenDeckWhenNoLegalFiveExists() {
+        val aces = (1..8).map { card(it, rarity = 5) }
+
+        val setup = MatchPreparation.prepare(
+            HandSource(blueDeck, aces),
+            redDeck,
+            rules = GameRules(random = true),
+            random = Random(1),
+        )
+
+        assertEquals(blueDeck.map { it.id }, setup.state.hands[CardColor.BLUE]?.map { it.id })
     }
 
     /** Random only ever built the local player's hand; an opponent has its own. */

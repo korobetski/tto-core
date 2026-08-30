@@ -225,8 +225,86 @@ data class AppVersion(
  * That argument is what let the rules-engine change above take the *whole* bundle up to 3.0.0
  * instead of adding a major on top of a minor nobody had. It is the same reasoning reaching a
  * different number because the facts changed, which is what makes it a reason and not a habit.
+ *
+ * ### 4.0.0 — the auction house, and one new item type
+ *
+ * A major earned on the second ground, by a single addition: [com.tripletriad.model.PouchItem],
+ * serial name `item-type-pouch`, the object a seller's proceeds arrive in.
+ *
+ * `ignoreUnknownKeys` does not cover this and it is worth being exact about why, because every
+ * other field in this bundle is covered by it. An unknown **key** is skipped; an unknown **sealed
+ * subtype discriminator** is not a key, it is a type the reader has no constructor for, and
+ * `kotlinx.serialization` throws. `Item` is a sealed hierarchy inside `GameSave.bag`, so a 3.x
+ * client whose profile holds one pouch cannot parse **the profile** — not the row, the profile. A
+ * player who listed a card from a new client and then opened an old one would find their account
+ * unreadable, which is precisely the condition a major exists to turn into a refusal at the door.
+ *
+ * `ItemEffect` gains `pouch-opened` for the same reason and with the same consequence, though it
+ * is only reachable by a client that asked to open one.
+ *
+ * Note what is *not* claiming this number, since the distinction is the whole of what the gate
+ * means. Both of these are additive and a 3.x peer survives them untouched:
+ *
+ * - `CardItem.origin`, an enum with a default, added so a card the auction handed back can say so.
+ *   An old peer skips the key and shows the description it always showed.
+ * - `ServerInfo.auction`, defaulted like `unlocks` beside it. This one had to be survivable: it
+ *   travels in the very response a client reads to discover whether it is *allowed* to talk, and a
+ *   field that broke that read would break the client's ability to be told to upgrade.
+ *
+ * The new endpoints under `/auctions` and everything they carry — `AuctionLot`, `AuctionStatus`,
+ * `AuctionRefusal` — break nobody by existing: an old client never calls them.
+ *
+ * On its own, this addition would not have moved [TRANSCRIPT_VERSION]: the auction touches no
+ * rule, and every transcript credited under 3.x would still hash the same. The section below is
+ * what moves it, and the two travelling under one number is the unshipped-version argument again.
+ *
+ * ### Also on this number — the deck-building caps
+ *
+ * [com.tripletriad.model.DeckLimits] caps a deck at one five-star and two four-stars, and the
+ * server refuses a deck that breaks it. It rides 4.0.0 rather than minting a number of its own, on
+ * the reasoning two sections above: 4.0.0 has not shipped, so its contents are still open.
+ *
+ * It would have earned a major anyway, on the second ground and by one field: `RejectionReason`
+ * gains `DECK_ILLEGAL`, and an unknown enum member is a value the reader has no case for rather
+ * than a key it can skip — the `PvpMatchStatus.AWAITING_CLAIM` case above, exactly. A 3.x client
+ * that submitted an over-capped deck would fail to parse the very verdict explaining why.
+ *
+ * It is a replay change too, by one line and not by the caps themselves. The caps decide which
+ * decks may be **brought**, and that alone changes nothing about what the engine computes once
+ * five cards are in a hand. `RULE_RANDOM` is what moves: it draws from the *collection* rather
+ * than from a deck, so leaving it exempt would have made selling the way around the caps — a
+ * player who dumps every low card is dealt the five-ace hand the deck editor refuses to build.
+ * `MatchPreparation.randomHand` now takes the first five of the shuffle the caps admit, so a
+ * stored Random transcript whose shuffle led with an illegal five replays to a different hand.
+ * [TRANSCRIPT_VERSION] is already moving to 5 below and carries this with it.
+ *
+ * `RULE_SWAP` is deliberately untouched, and is now the only way to hold more than the caps allow:
+ * a swap hands over whatever the other side drew, and one that refused an ace would be a rule
+ * reading differently depending on what the opponent owns.
+ *
+ * ### Also on this number — Bonus and Malus land after the placement
+ *
+ * The first ground, and the half of 3.0.0 that was wrong. A card no longer counts *itself* while
+ * its own captures are being resolved: it attacks under the tally as it stood before it landed and
+ * joins the tally afterwards, so a beast played onto a `+2` board attacks at `+2` and leaves a
+ * `+3` behind it. 3.0.0 had reversed that on the reasoning that a badge must not disagree with the
+ * attack it just watched; the badge is what changed instead — it is drawn on hand cards too now,
+ * and it says what the board *is*, which is a different claim from what the last placement *did*.
+ *
+ * Elemental is untouched and deliberately asymmetric with the pair: its ±1 belongs to the cell
+ * rather than to a running tally, so a card is on its element the instant it is placed and attacks
+ * with the modifier already applied. See [com.tripletriad.model.AscensionTally].
+ *
+ * A transcript played under Bonus or Malus therefore replays to a different set of captures on this
+ * build, and [TRANSCRIPT_VERSION] moves to 5 with it. `ReplayDeterminismTest`'s goldens pass
+ * untouched for the reason they did at 3.0.0 — its recorded match is played with no rules at all,
+ * so no tally ever forms in it.
+ *
+ * It rides 4.0.0 rather than minting a major of its own on the same reasoning as the deck caps:
+ * 4.0.0 has not shipped, so its contents are still open. Against the last version anybody ran this
+ * build already refuses.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(3, 0, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(4, 0, 0)
 
 /**
  * The header both sides put the version in.

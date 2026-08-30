@@ -310,19 +310,17 @@ class MatchStateTest {
     }
 
     /**
-     * A card counts **itself** the moment it is placed, so a 5 beats a 5 under Bonus.
+     * A card does **not** count itself while its own placement resolves, so a 5 still ties a 5.
      *
-     * The inverse of what this file used to assert. The AS3 ran `ascensionPhase` after the flips
-     * (`TTOCore.as:171`) and the port copied it, so the card that had just landed resolved its own
-     * captures without its own contribution — on the board and not yet counted.
-     *
-     * It is a rules change and it is deliberate: the board now *draws* the modifier, and a badge
-     * reading `+1` on a card that attacked as `+0` would be a screen contradicting itself at the
-     * only moment anybody is looking at it. [com.tripletriad.protocol.CURRENT_VERSION] 3.0.0 and
-     * [com.tripletriad.protocol.TRANSCRIPT_VERSION] 4 carry the change.
+     * The inverse of what this file asserted at 3.0.0, and back to `TTOCore.as:171`, where
+     * `ascensionPhase` runs *after* the flips. The rule is stated in that order — you play a card
+     * and then the board's bonus moves — and the badge no longer argues with it: it says what the
+     * board is worth now, which is a different claim from what the last placement attacked with.
+     * [com.tripletriad.protocol.CURRENT_VERSION] 4.0.0 and
+     * [com.tripletriad.protocol.TRANSCRIPT_VERSION] 5 carry the change.
      */
     @Test
-    fun aPlacedCardCountsItselfImmediately() {
+    fun aPlacedCardDoesNotCountItselfYet() {
         val beast = card(1).copy(type = CardType.BEAST)
         var state = MatchState.start(
             blueHand = listOf(beast) + hand(from = 2).drop(1),
@@ -334,11 +332,41 @@ class MatchStateTest {
         state = state.play(beast, 1)
 
         assertEquals(
+            CardColor.RED,
+            state.board[4]?.owner,
+            "the beast attacked as a 5 against a 5, so nothing flipped",
+        )
+        assertEquals(1, state.tally[CardType.BEAST], "and it is on the board now, so it counts")
+    }
+
+    /**
+     * And it is worth its `+1` from the **next** placement on — the other side of the same rule.
+     *
+     * Without this the test above would pass just as happily on an engine that had stopped
+     * applying Bonus altogether. Here the second beast attacks as a 6, on a tally the first one
+     * left behind, and takes the same 5 the first one could not.
+     */
+    @Test
+    fun theTallyTheFirstCardLeftBehindArmsTheSecond() {
+        val beasts = hand(from = 1).map { it.copy(type = CardType.BEAST) }
+        var state = MatchState.start(
+            blueHand = beasts,
+            redHand = hand(from = 11),
+            first = CardColor.RED,
+            rules = GameRules(typeRule = TypeRule.ASCENSION),
+        )
+        // Red opens on the centre. Blue answers below it, ties, then plays a second beast above it.
+        state = state.play(state.currentHand.first(), 4)
+        state = state.play(beasts[0], 7)
+        state = state.play(state.currentHand.first(), 0)
+        state = state.play(beasts[1], 1)
+
+        assertEquals(
             CardColor.BLUE,
             state.board[4]?.owner,
-            "the beast's own +1 makes it a 6 against a 5, so it captures",
+            "the second beast attacked as a 6 on the +1 the first one left",
         )
-        assertEquals(1, state.tally[CardType.BEAST])
+        assertEquals(2, state.tally[CardType.BEAST])
     }
 
     /**
@@ -362,10 +390,12 @@ class MatchStateTest {
     }
 
     /**
-     * A card in hand contributes nothing — the other half of "from the moment it is placed".
+     * A card in hand contributes nothing — a hand is not a board.
      *
-     * Four beasts held and none played leaves the tally empty, so the first one down is a `+1` and
-     * not a `+4`. The AS3 adjusted hand cards too; this port does not.
+     * Five beasts held and none played leaves the tally empty, so the first one down leaves a `+1`
+     * behind and not a `+5`. What a hand card *displays* is a separate question and the client
+     * answers it the AS3 way: the badge is drawn on hand cards too, because it reports the board's
+     * tally rather than the holder's.
      */
     @Test
     fun cardsInHandDoNotCount() {

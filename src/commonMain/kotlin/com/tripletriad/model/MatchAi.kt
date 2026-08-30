@@ -201,9 +201,12 @@ class MatchAi(private val options: MatchAiOptions = MatchAiOptions()) {
      * high whatever it holds.
      *
      * The tally counts this card, because the question is how exposed it would be **once played**
-     * — the same reason `RulesEngine.resolve` counts it, and the same call. An AI scoring its
-     * candidates against a tally the board will never be in would systematically undervalue
-     * playing into its own type under Bonus, which is the move that rule exists to reward.
+     * — and by the time anything can attack it, its own contribution has been recorded. This is
+     * deliberately *not* what `RulesEngine.resolve` is given: attacking happens during the
+     * placement, when the card has not joined the tally yet, and defending happens on every turn
+     * after, when it has. An AI scoring its candidates against a tally the board will never be in
+     * would systematically undervalue playing into its own type under Bonus, which is the move
+     * that rule exists to reward.
      */
     fun cover(state: MatchState, card: Card, position: Int): Int = Side.entries.sumOf { side ->
         val neighbour = state.board.neighbour(position, side)

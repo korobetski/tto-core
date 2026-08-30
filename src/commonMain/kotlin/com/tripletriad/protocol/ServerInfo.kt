@@ -41,6 +41,8 @@ import kotlinx.serialization.Serializable
  *   rather than compiled into both ends, so tuning the number is a configuration change instead of
  *   a coordinated release — see [Unlocks]. A client draws what it is told; the server refuses on
  *   its own copy, which is the copy that counts.
+ * @property auction the numbers its auction house runs on, sent for the reason [unlocks] is —
+ *   see [AuctionPolicy], which makes that argument at length.
  */
 @Serializable
 data class ServerInfo(
@@ -50,6 +52,7 @@ data class ServerInfo(
     val ready: Boolean = true,
     val release: ClientRelease? = null,
     val unlocks: Unlocks = Unlocks(),
+    val auction: AuctionPolicy = AuctionPolicy(),
 ) {
     /**
      * Whether [client] may talk to this server.

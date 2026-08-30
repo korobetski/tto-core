@@ -140,6 +140,17 @@ enum class RejectionReason {
     /** A card id in the deck is not one the profile owns. */
     DECK_NOT_OWNED,
 
+    /**
+     * The deck names more cards of a star rank than [com.tripletriad.model.DeckLimits] allows.
+     *
+     * Separate from [DECK_NOT_OWNED] because the two are different accusations and the player can
+     * act on only one of them. Not owning the cards is a claim about the collection — the answer is
+     * that the transcript is wrong about who owns what. Breaking a rank cap is a claim about the
+     * *deck*, and the answer is to open the deck editor and take a card out, which is why the
+     * message names the rank and the count rather than the cards.
+     */
+    DECK_ILLEGAL,
+
     /** The deck or a hand could not be dealt — usually an id absent from this build's table. */
     UNDEALABLE,
 
@@ -201,5 +212,18 @@ enum class RejectionReason {
  * after it is not credited. That is the correct answer — this build cannot honestly say what that
  * match did — and it is bounded by how long a queue waits for a network, which is the reason the
  * queue drains on every launch.
+ *
+ * **5** — and Bonus and Malus changed again, in the half of 4 that was wrong. A card no longer
+ * counts itself while its own placement resolves: it attacks under the board as it was and joins
+ * the tally afterwards, which is the order `TTOCore.as:171` had and the order the rule is stated
+ * in. The 1-floor from 4 stands untouched. The engine alone once more, with the same cost and the
+ * same bound — a queued transcript from a 4 build is refused rather than mis-credited.
+ *
+ * Riding the same number, and the second engine change on it: `RULE_RANDOM` draws under
+ * [com.tripletriad.model.DeckLimits]. `MatchPreparation.randomHand` takes the first five cards of
+ * its shuffle the star-rank caps admit rather than the first five outright, so a stored Random
+ * transcript whose shuffle led with two five-stars replays to a different hand. The shuffle itself
+ * is unchanged and consumes the generator identically, which is why every other Random transcript
+ * — and every non-Random one — replays exactly as it did.
  */
-const val TRANSCRIPT_VERSION: Int = 4
+const val TRANSCRIPT_VERSION: Int = 5

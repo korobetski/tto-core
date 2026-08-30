@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -27,9 +28,16 @@ class ItemTest {
     @Test
     fun aCardItemSerialisesAsTheAs3ToJsonDoes() {
         // `CardItem.__toJSON()` (:33-36) -> {type: 'item-type-card', card: 13, stack: 2}
+        //
+        // `origin` is the port's, and it appears here only because this fixture encodes
+        // defaults the way `SaveJson` does. It is additive and defaulted, so the AS3 shape
+        // still *parses* — which is what `aBagWrittenByTheAs3BuildStillParses` pins.
         val encoded = json.encodeToString<Item>(CardItem(13, stack = 2))
 
-        assertEquals("""{"type":"item-type-card","card":13,"stack":2}""", encoded)
+        assertEquals(
+            """{"type":"item-type-card","card":13,"stack":2,"origin":"plain"}""",
+            encoded,
+        )
     }
 
     @Test
@@ -77,6 +85,8 @@ class ItemTest {
             BoosterItem(BoosterType.GARLEAN, 7),
             PotionItem(PotionType.BIG_MGP, 2),
             MiscItem(4),
+            CardItem(9, 1, CardOrigin.AUCTION_UNSOLD),
+            PouchItem(mgp = 4200, cardId = 9, lotId = "lot-7"),
         )
 
         assertEquals(items, json.decodeFromString<List<Item>>(json.encodeToString(items)))
@@ -134,6 +144,10 @@ class ItemTest {
         assertEquals("STR_XP_BOOST", PotionType.XP.nameKey)
         assertEquals("APP_SMALL_MGP_BOOST_DESC", PotionType.SMALL_MGP.descriptionKey)
         assertEquals("APP_CARD_ITEM_DESC", CardItem(1).descriptionKey)
+        assertEquals(
+            "APP_CARD_ITEM_UNSOLD_DESC",
+            CardItem(1, origin = CardOrigin.AUCTION_UNSOLD).descriptionKey,
+        )
         // The icon needs the card's rarity, which only the catalog knows.
         val card = Card(257, "STR_FF14_CARD_1", "Dodo", 4, 4, 4, 4, rarity = 3)
         assertEquals("card_r3_icon", CardItem(1).iconFor(card))
@@ -242,6 +256,69 @@ class ItemTest {
         val booster = BoosterItem(BoosterType.PRIMAL)
 
         assertEquals(booster.open(Random(42)), booster.open(Random(42)))
+    }
+
+    /**
+     * A card the auction handed back is a different row from one out of a pack.
+     *
+     * Not cosmetic: `Inventory.add` merges on identity-minus-stack, so if these compared equal the
+     * two would share one row and that row would carry one of the two descriptions — telling half
+     * the players the wrong story about where their card came from.
+     */
+    @Test
+    fun anUnsoldAuctionCardIsNotTheSameItemAsAPlainOne() {
+        val plain = CardItem(13)
+        val unsold = CardItem(13, origin = CardOrigin.AUCTION_UNSOLD)
+
+        assertNotEquals(plain, unsold)
+        assertEquals(CardOrigin.PLAIN, plain.origin, "the default is the old behaviour")
+        assertEquals("APP_CARD_ITEM_UNSOLD_DESC", unsold.descriptionKey)
+    }
+
+    @Test
+    fun aPouchSerialisesWithItsLot() {
+        val encoded = json.encodeToString<Item>(PouchItem(mgp = 4200, cardId = 9, lotId = "lot-7"))
+
+        assertEquals(
+            """{"type":"item-type-pouch","mgp":4200,"card":9,"lot":"lot-7"}""",
+            encoded,
+        )
+    }
+
+    /**
+     * Two payouts stay two rows.
+     *
+     * The failure this prevents is not a display bug: `Inventory.remove` finds the *first* entry
+     * that stacks with the one named, so a merged pouch would be opened once and pay out once for
+     * two sales. [PouchItem.lotId] is what keeps them distinct even when the same card sold twice
+     * for the same amount.
+     */
+    @Test
+    fun twoPouchesNeverBecomeOne() {
+        val first = PouchItem(mgp = 4200, cardId = 9, lotId = "lot-7")
+        val second = PouchItem(mgp = 4200, cardId = 9, lotId = "lot-8")
+
+        assertFalse(first.stackable, "if this were true `Inventory.add` would try to merge them")
+        assertNotEquals(first, second)
+        assertEquals(first, first.withStack(1), "the identity `Inventory` compares on")
+    }
+
+    @Test
+    fun aPouchIsOpenedAndNothingElse() {
+        val pouch = PouchItem(mgp = 100, cardId = 1, lotId = "lot-1")
+
+        assertTrue(pouch.useable)
+        assertFalse(pouch.sellable, "selling a purse for a fraction of itself is a misclick")
+        assertFalse(pouch.dropable, "throwing away money somebody owed you is a support ticket")
+        assertEquals(0, pouch.value, "`mgp` is what it holds, not what a shop pays for it")
+        assertEquals(1, pouch.stack)
+    }
+
+    @Test
+    fun anEmptyOrUnattributedPouchIsAProgrammingError() {
+        assertFailsWith<IllegalArgumentException> { PouchItem(0, 1, "lot-1") }
+        assertFailsWith<IllegalArgumentException> { PouchItem(100, 0, "lot-1") }
+        assertFailsWith<IllegalArgumentException> { PouchItem(100, 1, " ") }
     }
 
     @Test

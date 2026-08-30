@@ -151,6 +151,29 @@ class TranscriptVerifierTest {
         )
     }
 
+    /**
+     * A deck the profile owns every card of, and still may not bring.
+     *
+     * The deck-building caps, put to a transcript. It is the only place they can be put to an
+     * *offline* match at all: nothing else in the transcript names a deck slot, so the server has
+     * no saved deck to re-check and must ask the question of the five cards as declared. Distinct
+     * from [RejectionReason.DECK_NOT_OWNED] because the two accusations are different and only one
+     * of them is answered in the deck editor — see the enum's own KDoc.
+     */
+    @Test
+    fun aDeckOverAStarRankCapIsRejectedEvenWhenEveryCardIsOwned() {
+        val honest = playHonestly(SEED)
+        val aces = (FIRST_FIVE_STAR..FIRST_FIVE_STAR + 1).map { Card.idFor(testBlock, it) }
+
+        assertRejected(
+            RejectionReason.DECK_ILLEGAL,
+            honest.copy(
+                deck = aces + honest.deck.take(3),
+                ownedCards = honest.ownedCards + aces.associateWith { 1 },
+            ),
+        )
+    }
+
     @Test
     fun aTranscriptFromAFormatThisBuildDoesNotReadIsRefusedRatherThanMisread() {
         val honest = playHonestly(SEED)
@@ -277,7 +300,9 @@ class TranscriptVerifierTest {
         right = ((id + 3) % 9) + 1,
         bottom = ((id + 5) % 9) + 1,
         left = ((id + 7) % 9) + 1,
-        rarity = 1,
+        // Rank 1 but for the last two, which exist so a fixture can name two five-stars in one
+        // deck — the only thing in this file that cares about a rank at all. See `DeckLimits`.
+        rarity = if (id >= FIRST_FIVE_STAR) 5 else 1,
     )
 
     private val cards = CardCatalog(
@@ -301,6 +326,9 @@ class TranscriptVerifierTest {
 
     private companion object {
         const val SEED = 20260807
+
+        /** The first of the two five-stars in this file's card table. See `card`. */
+        const val FIRST_FIVE_STAR = 39
 
         // Fixtures number their cards from 1; the ids they resolve to are global.
         val DECK = (1..5).map { Card.idFor(block = 1, number = it) }

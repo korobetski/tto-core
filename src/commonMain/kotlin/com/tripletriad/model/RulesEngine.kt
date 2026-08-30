@@ -129,11 +129,10 @@ data class Resolution(val board: Board, val captures: List<Capture>) {
  * ([data-flow.md](../../../../../../../docs/analysis/data-flow.md) § 1.1, § 4.3).
  * Here the placement, the captures and the resulting board are one value.
  *
- * @param tally the Ascension/Descension state *before* this placement. The placement's own
- *   contribution is added here rather than by the caller — a card is on the board while its
- *   captures are being resolved, so under Bonus or Malus it counts itself. Doing it inside
- *   `resolve` is what stops the two callers ([MatchState.play] and [MatchAi]) from being able to
- *   disagree about it; see [AscensionTally] for why the rule reads this way at all.
+ * @param tally the Ascension/Descension state as it stands **before** this placement, and the
+ *   state the whole resolution is fought under. The placed card does *not* count itself: its own
+ *   contribution lands once the captures are done, which is [MatchState.play]'s job and not this
+ *   one's. See [AscensionTally] for why the rule reads this way.
  */
 class RulesEngine(
     private val rules: GameRules = GameRules(),
@@ -147,7 +146,9 @@ class RulesEngine(
         tally: AscensionTally = AscensionTally.EMPTY,
     ): Resolution {
         val placed = board.place(position, card, player)
-        val context = Context(placed, position, card, player, tally.including(card, rules))
+        // `tally`, not `tally.including(card, rules)`: a card resolves its placement under the
+        // board as it was, and joins the tally afterwards. See the KDoc above.
+        val context = Context(placed, position, card, player, tally)
 
         val direct =
             if (rules.hasSpecialRule) specialCaptures(context) else basicCaptures(context)

@@ -110,10 +110,10 @@ data class MatchState(
      *
      * Resolves captures, updates the Ascension/Descension tally and advances the turn.
      *
-     * The tally passed to [RulesEngine.resolve] is the one from *before* the placement, and the
-     * engine records the placement itself — see there. The copy below records it again for the
-     * next turn, which cannot drift from the engine's: [AscensionTally.including] is pure and both
-     * calls are given the same card and the same rules.
+     * The order is the rule, not an implementation detail: the engine resolves the placement under
+     * the tally as it stood *before* it, and only then does the copy below record what the card
+     * contributed. So a beast played onto a Bonus board attacks with the board's current `+n` and
+     * makes it `+n+1` for everything that comes after. See [AscensionTally].
      */
     fun play(card: Card, position: Int): MatchState {
         // checkNotNull, not requireNotNull: "the board is full" is a state error, not a
