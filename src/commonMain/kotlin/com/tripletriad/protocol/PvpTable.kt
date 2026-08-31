@@ -118,6 +118,14 @@ enum class PvpRefusal {
     /** The purse does not cover the wager — on either side of it. */
     CANNOT_AFFORD,
 
+    /**
+     * The wager is above what one side's level allows, or below zero. See [PvpStakePolicy].
+     *
+     * Separate from [CANNOT_AFFORD] because the two are fixed by opposite things: one waits for a
+     * purse to fill, the other for a level to rise, and a player told the wrong one waits wrongly.
+     */
+    STAKE_TOO_HIGH,
+
     /** One open table per host, and this host has one. */
     ALREADY_WAITING,
 

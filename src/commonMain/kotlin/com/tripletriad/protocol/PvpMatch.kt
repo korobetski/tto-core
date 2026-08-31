@@ -6,6 +6,7 @@ import com.tripletriad.model.Card
 import com.tripletriad.model.CardColor
 import com.tripletriad.model.CardType
 import com.tripletriad.model.GameRules
+import com.tripletriad.model.GameSave
 import com.tripletriad.model.MatchResult
 import com.tripletriad.model.MatchView
 import com.tripletriad.model.PlacedCard
@@ -368,6 +369,87 @@ data class PvpStake(
     companion object {
         /** The stake that risks nothing. What an unstated wager means. */
         val None: PvpStake = PvpStake()
+    }
+}
+
+/**
+ * How large a wager a deployment lets a player propose, and what counts as a large one.
+ *
+ * ### Why there is a ceiling at all
+ *
+ * There is **no escrow** on a PvP stake — `MatchRewards.creditPvp` settles it after the fact
+ * against whatever the purse holds then. Both purses are checked before the match, so the wager is
+ * covered when it is agreed, but "covered" is the only thing that check knows. A player with 40 000
+ * MGP could open a table for all of it, and the two failures that follow are different and both
+ * bad: somebody joins by mistake and loses an evening's play to one match, or somebody joins on
+ * purpose and this is how a farmed account hands its balance to a main one in a single game.
+ *
+ * A cap that grows with [GameSave.level] answers both, because it is the one quantity an account
+ * cannot buy: the ceiling has to be *played* up to, and a fresh account cannot receive more than a
+ * fresh account is allowed to wager. It is the same argument [Unlocks] makes — a level is what
+ * makes a second account cost something — applied to the amount rather than to the door.
+ *
+ * ### Why it is on the wire
+ *
+ * For the reason [Unlocks] and [AuctionPolicy] are: the number will be tuned, and a constant
+ * compiled into both ends turns a tuning into a coordinated release. A client draws what it is
+ * told, and refuses to send what it knows will be refused; the server runs [allows] against its own
+ * copy, and that run is the one that counts.
+ *
+ * **Only [allows] is enforced.** [isHeavy] is a question about the *reader* — is this stake a large
+ * share of the purse I am about to risk — which has no server-side meaning, since the answer
+ * differs for every player looking at the same table. It lives here so the threshold is stated once
+ * and tuned with the rest.
+ *
+ * @property perLevel MGP of ceiling earned per level. The ceiling itself is [perLevel] × level.
+ * @property heavyPercent the share of a player's own purse at which a stake is worth warning them
+ *   about before they sit down.
+ */
+@Serializable
+data class PvpStakePolicy(
+    val perLevel: Int = DEFAULT_PER_LEVEL,
+    val heavyPercent: Int = DEFAULT_HEAVY_PERCENT,
+) {
+    /** The largest wager [save] may propose or accept. */
+    fun ceilingFor(save: GameSave): Int = perLevel * save.level
+
+    /**
+     * Whether [save] may be a party to [stake].
+     *
+     * Both ends of the range matter. The ceiling is the point of this class; the floor is that a
+     * **negative** wager settles backwards — `PvpMatchRow.spoils` pays the winner `stake.mgp` — so
+     * a table opened for -5 000 MGP is a table you win by losing. Nothing else refuses it: the
+     * affordability check asks whether the purse is *at least* the stake, which every negative
+     * number passes.
+     */
+    fun allows(save: GameSave, stake: PvpStake): Boolean =
+        stake.mgp >= 0 && stake.mgp <= ceilingFor(save)
+
+    /**
+     * Whether [mgp] is a large enough share of [purse] to be worth a second tap.
+     *
+     * In hundredths and against a `Long`, because the multiplication is the whole purse and the
+     * comparison has to hold at the top of the range. An empty purse makes every non-zero wager
+     * heavy, which is right: it is the one a player can least afford.
+     */
+    fun isHeavy(mgp: Int, purse: Int): Boolean =
+        mgp > 0 && mgp.toLong() * PERCENT >= purse.toLong() * heavyPercent
+
+    companion object {
+        /**
+         * A hundred a level: one match's winning payout, `MatchRewards.PVP_WIN_MGP`.
+         *
+         * So the ceiling is "as much as this account has been paid for winning, roughly" — 500
+         * at the level multiplayer opens at, 2 200 at the top of the ladder. High enough
+         * that a serious wager between two established players is not clipped, low enough
+         * that no single match can move a fortune.
+         */
+        const val DEFAULT_PER_LEVEL: Int = 100
+
+        /** A quarter of what you hold. Below that a loss stings; at that it hurts. */
+        const val DEFAULT_HEAVY_PERCENT: Int = 25
+
+        private const val PERCENT = 100L
     }
 }
 

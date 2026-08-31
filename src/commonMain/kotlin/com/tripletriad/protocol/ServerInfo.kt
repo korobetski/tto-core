@@ -43,6 +43,8 @@ import kotlinx.serialization.Serializable
  *   its own copy, which is the copy that counts.
  * @property auction the numbers its auction house runs on, sent for the reason [unlocks] is —
  *   see [AuctionPolicy], which makes that argument at length.
+ * @property stakes how large a PvP wager it allows, sent for the same reason — see
+ *   [PvpStakePolicy].
  */
 @Serializable
 data class ServerInfo(
@@ -53,6 +55,7 @@ data class ServerInfo(
     val release: ClientRelease? = null,
     val unlocks: Unlocks = Unlocks(),
     val auction: AuctionPolicy = AuctionPolicy(),
+    val stakes: PvpStakePolicy = PvpStakePolicy(),
 ) {
     /**
      * Whether [client] may talk to this server.
