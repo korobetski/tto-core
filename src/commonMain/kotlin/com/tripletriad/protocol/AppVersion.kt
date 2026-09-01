@@ -303,8 +303,32 @@ data class AppVersion(
  * It rides 4.0.0 rather than minting a major of its own on the same reasoning as the deck caps:
  * 4.0.0 has not shipped, so its contents are still open. Against the last version anybody ran this
  * build already refuses.
+ *
+ * ### 5.0.0 — the environment opponent stops moving before it is watched
+ *
+ * A major earned on neither of the two usual grounds. **No type on the wire changes**: not a
+ * field, not an enum member, not a sealed subtype. What changes is what one endpoint *means*.
+ *
+ * `POST /pve/matches` used to answer with the toss already honoured — a deal that gave the
+ * opponent the opening carried its card on the board and the placement in [PveMatchView.plays].
+ * It now answers with the board **as dealt**, an empty `plays`, and no playable slot, because it
+ * is not the player's turn yet. The opponent's opening is computed and written when the client
+ * asks for it, which it does with an ordinary `GET /pve/matches/{id}` once its announcements have
+ * finished — see [PveMatchView.plays], which carries the whole argument.
+ *
+ * A 4.x client against a 5.x server parses every byte of that answer and is then stuck: it draws
+ * an empty board, holds five cards it is not allowed to play, and waits for a turn that will not
+ * arrive until it asks a question it does not know to ask. That is worse than a parse failure,
+ * not better — a crash names itself, and this looks like the server hanging. Turning it into
+ * `426 Upgrade Required` at the door is precisely what a major is for, and it is the only reason
+ * this number moves.
+ *
+ * [TRANSCRIPT_VERSION] does **not** move. The opponent's choice was never part of a replay — it
+ * is written into the row the moment it is made, which is the property that lets the AI change
+ * without a version at all — and no rule the engine evaluates is touched here. Deciding it a
+ * second later changes when a row is written, not what any row replays to.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(4, 0, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(5, 0, 0)
 
 /**
  * The header both sides put the version in.

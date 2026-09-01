@@ -51,6 +51,24 @@ import kotlinx.serialization.Serializable
  * know when the other side will move; against a program the answer exists the moment the question
  * is asked, and making the client come back for it would add a round trip to every turn for
  * nothing.
+ *
+ * ### The one exception, which is the deal
+ *
+ * `POST /pve/matches` is the round trip worth splitting, and for the opposite reason: its answer
+ * exists too *early*. A deal whose toss gave the opponent the opening used to come back with that
+ * card already on the board, and the client had to take it back off — undo the placement, put the
+ * card back in the hand it left, in the slot it left — so that the coin flip announcing *who moves
+ * first* still had something to decide. A screen reconstructing a position the server could simply
+ * have sent is a second implementation of the deal, and it drifted from the first in exactly the
+ * way that predicts: the card went back unstamped, and sat in the opponent's hand in the player's
+ * own colour until it was played again.
+ *
+ * So the deal answers with the board **as dealt** and an empty [PveMatchView.plays], and the
+ * opening is computed on the first read that follows. Nothing waits on it in any sense that can
+ * stick: the row is a move list, an empty one under `first = RED` is the complete and replayable
+ * fact *the opponent has not moved yet*, and whichever request arrives next applies it before
+ * answering — the client asking once its announcements are done, a resumed match, or a move posted
+ * by a client that never asked.
  */
 
 /** One placement, as a client asks for it. The slot it comes from, and the cell it goes to. */
@@ -174,6 +192,13 @@ data class PveOutcome(
  * Empty on a plain read. Resuming a match is not a thing to animate — the board is the truth, and
  * replaying six placements at somebody who just reopened the app would be telling them a story they
  * were there for.
+ *
+ * Empty on the **deal** too, and that one is not a plain read: a match dealt against a toss the
+ * opponent won has an opening owing, and it is deliberately not in this list yet. The client draws
+ * the board as dealt, plays the rules captions, turns the hand over for Open, tosses the coin — and
+ * only then reads the match again, which is the request that computes the opening and announces it
+ * here. That read is the one place a client is told about a placement it did not cause, and it
+ * costs one round trip per match, spent while the announcements are running.
  */
 @Serializable
 data class PveMatchView(
