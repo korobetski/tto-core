@@ -107,7 +107,7 @@ enum class PotionType(val modifier: BoonModifier) {
  * - [MONSTER] — the bestiary of levels 1 and 2. The cheapest pack in the game.
  * - [GALBADIAN] — the Galbadian military and its machines, drawn from levels 3 to 8.
  * - [FIEND] — the bosses of levels 5 to 7, sharing no card with [GALBADIAN].
- * - [COMPANION] — the five level-8 companions, which [GUARDIAN_FORCE] deliberately excludes.
+ * - [COMPANION] — the level-8 companions, which [GUARDIAN_FORCE] deliberately excludes.
  * - [GUARDIAN_FORCE] — the sixteen GF cards, level 9. `Boko` and `Angelo` are left out: they are
  *   level 8 companions rather than Guardian Forces, and a pack that promises GFs should hold GFs.
  * - [CHARACTER] — the eleven level-10 character cards, Squall last. The most expensive thing in
@@ -315,16 +315,24 @@ enum class BoosterType(
     ),
 
     /**
-     * The five level-8 companions: Chubby Chocobo, Angelo, Gilgamesh, Mini Mog and Chicobo.
+     * The level-8 companions: Chubby Chocobo, Angelo, Mini Mog and Chicobo.
      *
      * The cards [GUARDIAN_FORCE] leaves out, and the reason it does — they sit at level 8 with the
-     * GFs' rarity and none of their standing. Not a real pack — frozen output of the old
-     * front-loaded formula.
+     * GFs' rarity and none of their standing. Gilgamesh sat here too, on that same reasoning, and
+     * has been taken out: he *is* a Guardian Force, summoned rather than kept, and a pack that
+     * sells companionship should not deal him. He is in no pack now, which is deliberate — the
+     * FFVIII shelf already sells more GFs than it sells anything else.
+     *
+     * His weight was simply dropped rather than shared out. Only the ratios between weights
+     * matter — [BoosterItem.open] divides by their sum — so the four survivors keep exactly the
+     * relative chances they had against each other, and the pack's shape is the one a player
+     * already knows minus one card. Not a real pack — frozen output of the old front-loaded
+     * formula.
      */
     @SerialName("COMPANION_BOOSTER")
     COMPANION(
-        pool = listOf(2126, 2127, 2128, 2129, 2130),
-        weights = listOf(0.33026, 0.33093, 0.18538, 0.1031, 0.05033),
+        pool = listOf(2126, 2127, 2129, 2130),
+        weights = listOf(0.33026, 0.33093, 0.1031, 0.05033),
         iconId = PACK_ICON,
     ),
 

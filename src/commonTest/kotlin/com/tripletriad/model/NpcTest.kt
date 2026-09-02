@@ -23,7 +23,7 @@ class NpcTest {
         ruleKeys: List<String> = emptyList(),
         fetish: List<Int> = emptyList(),
         pool: List<Int> = emptyList(),
-        level: NpcLevel = NpcLevel.NONE,
+        difficulty: Int = 0,
     ) = Npc(
         id = 1,
         nameKey = "STR_NPC_Test",
@@ -31,7 +31,7 @@ class NpcTest {
         ruleKeys = ruleKeys,
         fetishCards = fetish,
         cards = pool,
-        level = level,
+        difficulty = difficulty,
     )
 
     /** `NPC.get gameRules` (`:71-127`): each constant sets one slot or one flag. */
@@ -124,7 +124,8 @@ class NpcTest {
      */
     @Test
     fun anUnlevelledNpcPaysNoXp() {
-        val unlevelled = npc(level = NpcLevel.NONE)
+        // Which is now the same thing as an unrated one: the band is read off the difficulty.
+        val unlevelled = npc(difficulty = 0)
 
         for (result in MatchResult.entries) {
             assertEquals(0, unlevelled.xpFor(result), result.name)
@@ -132,12 +133,19 @@ class NpcTest {
     }
 
     @Test
-    fun xpForReadsTheRowForTheResult() {
-        val expert = npc(level = NpcLevel.EXPERT)
+    fun xpForReadsTheDifficultyRowForTheResult() {
+        // The band decides only whether anything is paid at all; the difficulty decides how much.
+        val hardest = npc(difficulty = 10)
 
-        assertEquals(35, expert.xpFor(MatchResult.WIN))
-        assertEquals(18, expert.xpFor(MatchResult.DRAW))
-        assertEquals(10, expert.xpFor(MatchResult.LOSE))
+        assertEquals(45, hardest.xpFor(MatchResult.WIN))
+        assertEquals(25, hardest.xpFor(MatchResult.DRAW))
+        assertEquals(15, hardest.xpFor(MatchResult.LOSE))
+
+        val easiest = npc(difficulty = 1)
+
+        assertEquals(27, easiest.xpFor(MatchResult.WIN), "and the bottom of the scale pays 27")
+        assertEquals(NpcLevel.NOVICE, easiest.level, "both of these are the same band, and pay")
+        assertEquals(NpcLevel.EXPERT, hardest.level, "differently")
     }
 
     /**
@@ -147,26 +155,18 @@ class NpcTest {
      * `PVEMatchScreen.endGame` pays `MGPReward.w + rand(20)` on a win and `MGPReward.l + rand(5)`
      * on a loss and subtracts nothing, so **every result is a net gain**. See [Npc.mgpFor] for why
      * that is reproduced rather than corrected into the entry cost it looks like.
+     *
+     * The fee cannot be varied independently any more — it and the payout are both read off the
+     * difficulty — so what is asserted is that the payout is the whole payout: exactly
+     * [mgpRewardFor]'s row, with a fee that is charged against it nowhere.
      */
     @Test
     fun theMatchFeeIsNotDeductedFromTheReward() {
-        val reward = MgpReward(win = 47, draw = 18, lose = 7)
-        val opponent = npc().copy(matchFee = 20, mgpReward = reward)
+        val opponent = npc(difficulty = 6)
 
-        assertEquals(47, opponent.mgpFor(MatchResult.WIN))
-        assertEquals(18, opponent.mgpFor(MatchResult.DRAW))
-        assertEquals(7, opponent.mgpFor(MatchResult.LOSE))
-    }
-
-    /** And a fee-free opponent pays exactly the same, which is the point. */
-    @Test
-    fun theFeeChangesNothingAboutThePayout() {
-        val reward = MgpReward(win = 47, draw = 18, lose = 7)
-        val free = npc().copy(matchFee = 0, mgpReward = reward)
-        val pricey = npc().copy(matchFee = 30, mgpReward = reward)
-
+        assertTrue(opponent.matchFee > 0, "there is a fee to not deduct")
         for (result in MatchResult.entries) {
-            assertEquals(free.mgpFor(result), pricey.mgpFor(result), result.name)
+            assertEquals(mgpRewardFor(6)[result], opponent.mgpFor(result), result.name)
         }
     }
 

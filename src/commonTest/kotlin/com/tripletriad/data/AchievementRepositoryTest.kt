@@ -77,15 +77,14 @@ class AchievementRepositoryTest {
     }
 
     /**
-     * Crediting cannot cascade, and that is why [AchievementRepository.credit] does not iterate.
+     * A **card** reward still cannot cascade, which is the half of the old invariant that survives.
      *
-     * A reward is a `CardItem` and goes into the **bag**; `ac-td1` counts [GameSave.cards], the
-     * collection. The two only meet when [Inventory.use] consumes the item, which is a player
-     * action. So one round is provably enough — and if a future reward ever changed that, this test
-     * fails rather than the behaviour changing quietly.
+     * A `CardItem` goes into the **bag**; `ac-td1` counts [GameSave.cards], the collection. The two
+     * only meet when [Inventory.use] consumes the item, which is a player action. See
+     * [anMgpRewardCascadesWithinOneCredit] for the half that no longer holds.
      */
     @Test
-    fun aRewardDoesNotEnableAFurtherAchievement() {
+    fun aCardRewardDoesNotEnableAFurtherAchievement() {
         // Nine cards owned: ac-td1 wants ten. ac-tt3's reward would be the tenth *if* rewards
         // landed in the collection rather than the bag.
         val save = GameSave(cards = (1..9).associateWith { 1 }, npcWins = mapOf("jonas" to 300))
@@ -102,6 +101,37 @@ class AchievementRepositoryTest {
         val used = Inventory.use(first.save, CardItem(331)).save
         assertEquals(10, used.cards.size)
         assertEquals(listOf("ac-td1"), repository.credit(used, at = 300).earned.map { it.id })
+    }
+
+    /**
+     * An **MGP** reward can, and [AchievementRepository.credit] must pay it out inside one call.
+     *
+     * Completing the scions pays 5 000 MGP into the purse, and `ac-mp1` reads the purse at 1 000.
+     * A profile holding neither earns both from one act, and the second in the *same* credit —
+     * leaving it for the next match would show the player the money landing and the badge it
+     * plainly earned not appearing.
+     *
+     * Break the loop in `credit` back to a single pass and this fails on `ac-mp1`.
+     */
+    @Test
+    fun anMgpRewardCascadesWithinOneCredit() {
+        // `GameSave`'s default purse is 100 — a starting float, well under `ac-mp1`'s 1 000, so
+        // the reward is still the only thing that can carry it over.
+        val save = GameSave(cards = AchievementCatalog.SCION_CARDS.associateWith { 1 })
+        assertTrue(save.mgp < 1_000, "the reward must be what crosses ac-mp1, not the float")
+
+        val award = repository.credit(save, at = 100)
+
+        assertEquals(save.mgp + 5_000, award.save.mgp)
+        val ids = award.earned.map { it.id }
+        assertTrue(ids.containsAll(listOf("ac-foh1", "ac-foh4")), "the whole scion ladder")
+        assertTrue("ac-mp1" in ids, "the MGP the ladder paid earns the MGP Pot's first tier")
+        assertTrue(
+            ids.indexOf("ac-foh4") < ids.indexOf("ac-mp1"),
+            "a badge a reward paid for comes after the badge that paid for it",
+        )
+        assertEquals(100L, award.save.achievements.getValue("ac-mp1"), "one act, one instant")
+        assertFalse(repository.credit(award.save, at = 200).hasAwards, "and it settles")
     }
 
     @Test

@@ -7,9 +7,7 @@ import com.tripletriad.model.GameRules
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.ItemReward
 import com.tripletriad.model.MatchResult
-import com.tripletriad.model.MgpReward
 import com.tripletriad.model.Npc
-import com.tripletriad.model.NpcLevel
 import com.tripletriad.model.Objective
 import com.tripletriad.model.OrderRule
 import com.tripletriad.model.XpTable
@@ -33,9 +31,10 @@ class MatchRewardsTest {
         id = 1,
         nameKey = "STR_NPC_Test",
         iconId = "test-npc",
-        level = NpcLevel.EXPERT,
-        matchFee = 30,
-        mgpReward = MgpReward(win = 100, draw = 40, lose = 10),
+        // The hardest opponent there is, so the fixture pays the top of every curve: EXPERT,
+        // 250/100/37 MGP, 45/25/15 XP, a fee of 40. The band and the payout are no longer
+        // separate fields that could be set to disagree with it — they are read off this one.
+        difficulty = 10,
     )
 
     private val profile = GameSave.new(username = "Tester", createdAt = AT)
@@ -125,8 +124,8 @@ class MatchRewardsTest {
         id = 2,
         nameKey = "STR_NPC_Pauper",
         iconId = "pauper",
-        level = NpcLevel.NONE,
-        mgpReward = MgpReward(win = 0, draw = 0, lose = 0),
+        // Unrated, which is the only way to pay nothing now.
+        difficulty = 0,
     )
 
     // ---- MGP -------------------------------------------------------------
@@ -141,9 +140,9 @@ class MatchRewardsTest {
     @Test
     fun theMgpPayoutIsTheBaseRewardPlusAResultSpecificBonus() {
         val expected = mapOf(
-            MatchResult.WIN to (100..120),
-            MatchResult.DRAW to (40..50),
-            MatchResult.LOSE to (10..15),
+            MatchResult.WIN to (250..270),
+            MatchResult.DRAW to (100..110),
+            MatchResult.LOSE to (37..42),
         )
         for ((result, range) in expected) {
             val paid = seeds.map { credit(result, seed = it).reward.mgp }
@@ -182,21 +181,28 @@ class MatchRewardsTest {
 
     /** XP has no random component — `XPReward.w` is taken as it stands. */
     @Test
-    fun theXpPayoutIsExactAndFollowsTheLevelBand() {
-        assertEquals(35, credit(MatchResult.WIN).reward.xp, "EXPERT wins 25 + 5*2")
-        assertEquals(18, credit(MatchResult.DRAW).reward.xp)
-        assertEquals(10, credit(MatchResult.LOSE).reward.xp)
+    fun theXpPayoutIsExactAndFollowsTheDifficulty() {
+        assertEquals(45, credit(MatchResult.WIN).reward.xp, "difficulty 10 wins 25 + 10*2")
+        assertEquals(25, credit(MatchResult.DRAW).reward.xp)
+        assertEquals(15, credit(MatchResult.LOSE).reward.xp)
         assertTrue(seeds.map { credit(MatchResult.WIN, seed = it).reward.xp }.distinct().size == 1)
     }
 
+    /**
+     * An unrated opponent pays no XP, and the random top-up is all the MGP it pays.
+     *
+     * The two used to be independent — `level` gated the XP and `mgpReward` was its own field, so
+     * an EXPERT could pay nothing and an unlevelled opponent could pay 100. Both now come off
+     * `difficulty`, so the only opponent that pays no XP is the one that has never been rated, and
+     * it pays no base MGP either. What survives is the asymmetry that mattered: XP is exactly 0,
+     * MGP is not, because `rand(20)` is added whatever the opponent.
+     */
     @Test
-    fun anUnlevelledOpponentPaysNoXpButStillPaysMgp() {
-        val dummy = opponent.copy(level = NpcLevel.NONE)
-
-        val credited = credit(MatchResult.WIN, npc = dummy)
+    fun anUnratedOpponentPaysNoXpAndOnlyTheRandomTopUp() {
+        val credited = credit(MatchResult.WIN, npc = pauper, seed = 0)
 
         assertEquals(0, credited.reward.xp)
-        assertTrue(credited.reward.mgp > 0)
+        assertTrue(credited.reward.mgp in 0..20, "paid ${credited.reward.mgp}")
     }
 
     @Test
@@ -206,7 +212,7 @@ class MatchRewardsTest {
 
         val credited = credit(MatchResult.WIN, save = nearly)
 
-        assertEquals(2, credited.save.level, "35 XP on top of $XP_NEAR_LEVEL_2 should level up")
+        assertEquals(2, credited.save.level, "45 XP on top of $XP_NEAR_LEVEL_2 should level up")
     }
 
     // ---- Boons -----------------------------------------------------------
@@ -225,8 +231,8 @@ class MatchRewardsTest {
 
         assertTrue(credited.reward.mgpBoonSpent)
         assertEquals(1, credited.save.boons.mgp, "one boon should be consumed")
-        // 100 + rand(0..20) + round(100 * 20/100) = 120..140
-        assertTrue(credited.reward.mgp in 120..140, "paid ${credited.reward.mgp}")
+        // 250 + rand(0..20) + round(250 * 20/100) = 300..320
+        assertTrue(credited.reward.mgp in 300..320, "paid ${credited.reward.mgp}")
     }
 
     @Test
@@ -237,7 +243,7 @@ class MatchRewardsTest {
 
         assertTrue(credited.reward.xpBoonSpent)
         assertEquals(0, credited.save.boons.xp)
-        assertEquals(35 + 7, credited.reward.xp, "35 + round(35 * 20/100)")
+        assertEquals(45 + 9, credited.reward.xp, "45 + round(45 * 20/100)")
     }
 
     @Test
@@ -262,7 +268,7 @@ class MatchRewardsTest {
         val credited = credit(MatchResult.WIN, seed = 0)
 
         assertFalse(credited.reward.mgpBoonSpent)
-        assertTrue(credited.reward.mgp in 100..120)
+        assertTrue(credited.reward.mgp in 250..270)
     }
 
     // ---- Counters --------------------------------------------------------

@@ -224,12 +224,11 @@ data class Availability(
  * @property ruleKeys the AS3 rule constants this NPC imposes. [gameRules] turns them into a
  *   [GameRules]; they are kept in raw form because that is what `NPCs.as` lists and what the rules
  *   digest screen displays.
- * @property matchFee MGP charged to play. Deducted whatever the result.
- * @property difficulty 1..10 — how hard this opponent is, and what the list sorts on.
- *   **Re-derived.** `NPCs.as` ships a field of the same name that is not a scale: the FFXIV table
- *   runs 1..19 with gaps and the FFVIII table is 0 throughout. It is now measured — see
- *   [NpcRating][com.tripletriad.data.NpcRating] — and the other three balance fields below
- *   ([level], [matchFee], [mgpReward]) follow from it, so all four say one thing.
+ * @property difficulty 1..10 — how hard this opponent is, what the list sorts on, and the only
+ *   balance number stored. **Re-derived.** `NPCs.as` ships a field of the same name that is not a
+ *   scale: the FFXIV table runs 1..19 with gaps and the FFVIII table is 0 throughout. It is now
+ *   measured — see [NpcRating][com.tripletriad.data.NpcRating] — and [level], [matchFee] and
+ *   [mgpReward] are read off it rather than stored beside it. 0 means unrated.
  */
 @Serializable
 data class Npc(
@@ -251,9 +250,6 @@ data class Npc(
     @SerialName("rules") val ruleKeys: List<String> = emptyList(),
     @SerialName("fetishesCards") val fetishCards: List<Int> = emptyList(),
     val cards: List<Int> = emptyList(),
-    val level: NpcLevel = NpcLevel.NONE,
-    val matchFee: Int = 0,
-    @SerialName("MGPReward") val mgpReward: MgpReward = MgpReward(),
     val itemRewards: List<ItemReward> = emptyList(),
     val difficulty: Int = 0,
     val availability: Availability = Availability.Always,
@@ -280,7 +276,26 @@ data class Npc(
 ) {
     init {
         require(id > 0) { "npc id must be positive, was $id" }
+        require(difficulty in 0..DIFFICULTY_RANGE.last) {
+            "npc difficulty must be in 0..${DIFFICULTY_RANGE.last}, was $difficulty"
+        }
     }
+
+    /**
+     * The skill band the opponent list labels this row with. [npcLevelFor] on [difficulty].
+     *
+     * Computed rather than stored, as [matchFee] and [mgpReward] are, and for the reason
+     * `NpcRating` exists: `npcs.json` used to carry all four numbers and the authored ones
+     * disagreed — an opponent could be an EXPERT paying a beginner's MGP. A file that states one
+     * of them cannot contradict itself about the other three.
+     */
+    val level: NpcLevel get() = npcLevelFor(difficulty)
+
+    /** MGP charged to play. **Not deducted** — [mgpFor] says why. [matchFeeFor] on [difficulty]. */
+    val matchFee: Int get() = matchFeeFor(difficulty)
+
+    /** What a win, a draw and a loss pay. [mgpRewardFor] on [difficulty]. */
+    val mgpReward: MgpReward get() = mgpRewardFor(difficulty)
 
     /**
      * The rule set this NPC plays under.
@@ -314,9 +329,12 @@ data class Npc(
      *
      * 0 for an unlevelled NPC: `NPC.get XPReward` (`:194-206`) can only ever return null for
      * [NpcLevel.NONE], and the callers treat null as no reward.
+     *
+     * Everything else is [xpRewardFor] on [difficulty] rather than [NpcLevel.xpReward] on the
+     * band — see that function for why the band is no longer what pays.
      */
     fun xpFor(result: MatchResult): Int =
-        if (level == NpcLevel.NONE) 0 else level.xpReward[result]
+        if (level == NpcLevel.NONE) 0 else xpRewardFor(difficulty)[result]
 
     /**
      * Five card ids for this NPC's hand: every fetish card, topped up at random from [cards].
@@ -345,14 +363,6 @@ data class Npc(
     }
 
     /**
-     * Rolls the whole drop table, keeping each entry that beats its own rate.
-     *
-     * `NPC.getRewardItems()` (`:257-275`). Note this is **not** `getRewardItem()` (singular,
-     * `:237-255`), which picks one entry at random and can return null; the singular version is
-     * unused by the match screens and is not ported. The plural one can return several items or
-     * none.
-     */
-    /**
      * Whether [save] has earned the right to challenge this opponent.
      *
      * True for all but one of them, [requiresAchievement] being null. Written the same way
@@ -362,6 +372,14 @@ data class Npc(
     fun isUnlockedFor(save: GameSave): Boolean =
         requiresAchievement?.let(save::hasAchievement) != false
 
+    /**
+     * Rolls the whole drop table, keeping each entry that beats its own rate.
+     *
+     * `NPC.getRewardItems()` (`:257-275`). Note this is **not** `getRewardItem()` (singular,
+     * `:237-255`), which picks one entry at random and can return null; the singular version is
+     * unused by the match screens and is not ported. The plural one can return several items or
+     * none.
+     */
     fun rollRewards(random: Random = Random.Default): List<Item> =
         itemRewards.filter { random.nextDouble() < it.rate }.mapNotNull { it.item() }
 }

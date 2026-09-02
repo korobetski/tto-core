@@ -88,9 +88,16 @@ sealed interface Requirement {
     }
 
     /**
-     * Own every card in [cardIds], on the [collection] profile only.
+     * Own [target] of the cards in [cardIds] — every one of them, unless a smaller number is
+     * named.
      *
-     * `ac-fob` (`Achievements.as:71`) is the sole instance: the thirteen beast cards.
+     * `ac-fob` (`Achievements.as:71`) was the sole instance and wanted the whole set: the thirteen
+     * beast cards. [target] is what makes a *ladder* out of one collection — "13 of the 35
+     * beasts", then 21, then 28, then all of them — instead of one all-or-nothing badge that a
+     * player collecting a 35-card tribe sees no movement on for months. It is a count over one
+     * pool rather than four nested [cardIds] lists because nesting would let a tier name a card
+     * the tier above it does not, and progress that can go **down** as the ladder is climbed is
+     * not something the screen can draw.
      *
      * The AS3 gated it on `MODE == 'ff14_'`, and that gate is **gone**. It existed because the ids
      * meant different cards in the other table — the collision global ids removed. An id names one
@@ -98,9 +105,16 @@ sealed interface Requirement {
      */
     data class CardSetOwned(
         val cardIds: List<Int>,
+        val target: Int = cardIds.size,
     ) : Requirement {
+        init {
+            require(target in 1..cardIds.size) {
+                "target must be 1..${cardIds.size}, was $target"
+            }
+        }
+
         override fun progress(save: GameSave): Progress =
-            Progress(cardIds.count { save.ownsCard(it) }, cardIds.size)
+            Progress(cardIds.count { save.ownsCard(it) }, target)
     }
 }
 
@@ -118,7 +132,12 @@ sealed interface Requirement {
  *   `ac-fob` uses a card thumbnail, named `card_thumb_<card id>` — it was `ff14_thumb_37`, and the
  *   prefix went with the collection that justified it. The client turns the id into an atlas frame
  *   name; see `thumbTextureId`.
- * @property reward granted into the bag on earning it. Only three achievements have one.
+ * @property reward granted into the bag on earning it.
+ * @property mgpReward paid straight into the purse on earning it, rather than into the bag. There
+ *   is no `MgpItem` to put there and there should not be one: every other bag entry is a thing to
+ *   *decide* about — use it, sell it, keep it — and money is not. A pouch ([PouchItem]) is the one
+ *   exception and it exists for a reason this does not share: an auction settles while nobody is
+ *   watching, so the pouch is the only notice the seller gets. An achievement announces itself.
  */
 data class Achievement(
     val id: String,
@@ -126,7 +145,15 @@ data class Achievement(
     val iconId: String,
     val requirement: Requirement,
     val reward: Item? = null,
+    val mgpReward: Int = 0,
 ) {
+    init {
+        require(mgpReward >= 0) { "$id pays a negative $mgpReward MGP" }
+    }
+
+    /** Whether earning it grants anything — what the achievements screen shows a reward for. */
+    val hasReward: Boolean get() = reward != null || mgpReward > 0
+
     /** Whether [save] has met the requirement, whether or not it has been recorded yet. */
     fun isEarnedBy(save: GameSave): Boolean = requirement.progress(save).isMet
 
@@ -135,7 +162,12 @@ data class Achievement(
 }
 
 /**
- * The 22 achievements of `datas/Achievements.as`, in its order.
+ * The achievements: the 22 of `datas/Achievements.as` in its order, plus what this port added.
+ *
+ * The additions are the three tournament keys at the end, and the collection ladders — four FFXIV
+ * tribes of four rungs each and one FFVIII set of one, seventeen entries where the AS3 had the
+ * single `ac-fob`. See [Collection] for how a ladder is built and why the beast family's first
+ * rung keeps its old id.
  *
  * Transcribed from `LIST` (`:45-72`), whose inline comments state each threshold. Two things in the
  * original that are *not* reproduced, both bugs rather than behaviour:
@@ -149,12 +181,126 @@ data class Achievement(
  *   written; the threshold is the original's design decision, not an error to fix silently.
  */
 object AchievementCatalog {
-    /** The thirteen beast cards, `Achievements.as:71`. Also [BoosterType.BEAST]'s pool. */
+    /**
+     * Tier numerals, as the label keys spell them.
+     *
+     * First member of the object on purpose: an `object`'s properties initialise top to bottom,
+     * and the [Collection] declarations below read this in their `init` block. Declared after
+     * them it is still null when they run, and the whole catalogue fails to load.
+     */
+    private val ROMAN = listOf("I", "II", "III", "IV", "V")
+
+    /**
+     * Every card of one FFXIV tribe, and the FFVIII companions.
+     *
+     * ### Why these are lists here and not a query over the card table
+     *
+     * `:core` has no card table — [Card] is a record, and the catalogue that holds them is loaded
+     * from `cards.json` in the client, which `commonMain` here cannot see and a server verifying a
+     * transcript does not load. So a requirement that means "every beast card" has to name them.
+     *
+     * That makes the lists a **copy of a fact that lives somewhere else**, which is the failure
+     * mode worth naming: the day a card's `type` is corrected in `cards.json` these silently
+     * disagree with it, and the achievement quietly asks for the wrong set. `CardBundleTest` in
+     * the client is what keeps them honest — it re-derives each list from the bundled `type` field
+     * and fails if it differs. Change one, run that test, change the other.
+     *
+     * ### Not the booster pools
+     *
+     * [BoosterType.BEAST] and its three siblings draw from a **subset** — thirteen beasts, twelve
+     * primals, ten scions, six garleans — with hand-frozen weights, and they are the sets the AS3
+     * shipped. Widening a pack changes its odds and its price; widening an achievement does not.
+     * [BEAST_CARDS] and `BoosterType.BEAST.pool` were the same thirteen ids and are no longer the
+     * same thing, which is why they are no longer the same list.
+     */
     val BEAST_CARDS: List<Int> = listOf(
-        270, 271, 272, 273, 274, 283, 291, 292, 293, 338, 339, 373, 384,
+        270, 271, 272, 273, 274, 276, 283, 291, 292, 293,
+        338, 339, 371, 373, 384, 415, 418, 439, 440, 441,
+        461, 474, 504, 514, 533, 534, 541, 551, 587, 606,
+        620, 663, 665, 700, 710,
     )
 
-    val all: List<Achievement> = listOf(
+    /** Every card typed `primals` in the FFXIV table. */
+    val PRIMAL_CARDS: List<Int> = listOf(
+        296, 297, 298, 299, 308, 309, 310, 311, 317, 353,
+        354, 393, 419, 424, 438, 446, 447, 453, 484, 561,
+        573, 575, 577, 593, 596, 601, 602, 612, 660, 705,
+    )
+
+    /** Every card typed `garlean` in the FFXIV table. */
+    val GARLEAN_CARDS: List<Int> = listOf(
+        287, 288, 303, 307, 320, 375, 412, 416, 423, 427,
+        428, 431, 432, 436, 448, 454, 457, 494, 500, 548,
+        550, 555, 559, 569, 576, 581, 597, 603,
+    )
+
+    /** Every card typed `scions` in the FFXIV table — the Scions of the Seventh Dawn. */
+    val SCION_CARDS: List<Int> = listOf(
+        275, 302, 304, 305, 306, 312, 315, 316, 378, 394,
+        421, 422, 455, 456, 473, 497, 507, 525, 526, 558,
+        598, 711,
+    )
+
+    /**
+     * The five FFVIII companions: PuPu, Chubby Chocobo, Angelo, Mini Mog, Chicobo.
+     *
+     * The one set here that is **not** a `type` in `cards.json` — the FFVIII table's `type` field
+     * holds elements, not tribes (see [CardType]), so there is nothing for `CardBundleTest` to
+     * re-derive this from. It is authored, and it is *nearly* [BoosterType.COMPANION]'s pool —
+     * Gilgamesh has been taken out of both, being a Guardian Force rather than anyone's companion.
+     * The one card that separates them is **PuPu**: a level 6 monster card, so no pack deals him,
+     * which is the point. A badge that four packs can hand you is a badge nobody notices earning;
+     * this one ends on a card that has to be played for.
+     */
+    val COMPANION_CARDS: List<Int> = listOf(PUPU, 2126, 2127, 2129, 2130)
+
+    /**
+     * The thirty-five `beast` cards, at thirteen — the AS3 threshold, and the whole set as it
+     * then stood — then 21, 28 and all of them.
+     */
+    private val BEAST_FAMILY = Collection(
+        idStem = "ac-fob",
+        labelStem = "APP_AC_BEASTS",
+        cards = BEAST_CARDS,
+        tiers = listOf(13, 21, 28, 35),
+        // `ff14_thumb_37` in the original: Memeroon, and the one icon the AS3 achievements screen
+        // drew from the card atlas rather than the icon sheet.
+        iconId = "card_thumb_${Card.idFor(block = 1, number = 37)}",
+        firstReward = TOZOL_HUATOTL,
+    )
+
+    /** The thirty `primals` cards. The rungs are the beasts' 13/21/28/35 scaled to thirty. */
+    private val PRIMAL_FAMILY = Collection(
+        idStem = "ac-fop",
+        labelStem = "APP_AC_PRIMALS",
+        cards = PRIMAL_CARDS,
+        tiers = listOf(11, 18, 24, 30),
+        iconId = "card_thumb_$IFRIT",
+        firstReward = ALEXANDER_PRIME,
+    )
+
+    /** The twenty-eight `garlean` cards. */
+    private val GARLEAN_FAMILY = Collection(
+        idStem = "ac-fog",
+        labelStem = "APP_AC_GARLEANS",
+        cards = GARLEAN_CARDS,
+        tiers = listOf(10, 17, 23, 28),
+        iconId = "card_thumb_$GAIUS_VAN_BAELSAR",
+        firstReward = GRYNEWAHT,
+    )
+
+    /** The twenty-two `scions` cards — the Scions of the Seventh Dawn. */
+    private val SCION_FAMILY = Collection(
+        idStem = "ac-foh",
+        labelStem = "APP_AC_SCIONS",
+        cards = SCION_CARDS,
+        tiers = listOf(8, 13, 18, 22),
+        iconId = "card_thumb_$YSHTOLA",
+        firstReward = ARENVALD_LENTINUS,
+    )
+
+    /** The twenty-two of `datas/Achievements.as`, in its order. */
+    private val PORTED: List<Achievement> = listOf(
         // Triple Team — defeat n NPCs.
         tripleTeam("ac-tt1", "STR_Triple_Team_I", 1),
         tripleTeam("ac-tt2", "STR_Triple_Team_II", 30),
@@ -184,11 +330,32 @@ object AchievementCatalog {
         hoard("ac-mp4", "STR_MGP_POT_IV", 400_000, "card_r4_icon"),
         hoard("ac-mp5", "STR_MGP_POT_V", 1_000_000, "card_r5_icon"),
 
+    )
+
+    /**
+     * Collections — own n of one tribe.
+     *
+     * `ac-fob` is the AS3's single beast badge, kept under its own id and its own threshold of
+     * thirteen so a profile that earned it stays earned; what changed under it is the pool it
+     * counts against, which grew from those thirteen cards to all thirty-five the table types
+     * `beast`. The three tiers above it, and the three families beside it, are new.
+     */
+    private val LADDERS: List<Achievement> =
+        collection(BEAST_FAMILY, Legacy(id = "ac-fob", labelKey = "STR_FRIEND_OF_BEASTS")) +
+            collection(PRIMAL_FAMILY) +
+            collection(GARLEAN_FAMILY) +
+            collection(SCION_FAMILY)
+
+    /** What this port added that is not a ladder rung. */
+    private val AUTHORED: List<Achievement> = listOf(
+        // FFVIII's one collection badge. A single tier, not a ladder: five cards is a weekend,
+        // and three intermediate rungs over five cards would be scaffolding around nothing.
         Achievement(
-            id = "ac-fob",
-            labelKey = "STR_FRIEND_OF_BEASTS",
-            iconId = "card_thumb_${Card.idFor(block = 1, number = 37)}",
-            requirement = Requirement.CardSetOwned(BEAST_CARDS),
+            id = "ac-foc",
+            labelKey = "APP_AC_COMPANIONS",
+            iconId = "card_thumb_2127",
+            requirement = Requirement.CardSetOwned(COMPANION_CARDS),
+            reward = CardItem(MOOBA),
         ),
         // Tournaments won. Authored here rather than ported: the original recorded no ladder
         // result at all, so none of these could have existed. Each is also a key that *opens*
@@ -198,6 +365,8 @@ object AchievementCatalog {
         campaign(CAMPAIGN_CARD_CLUB, "APP_AC_CAMPAIGN_CC", "cc"),
         campaign(CAMPAIGN_GOLD_SAUCER, "APP_AC_CAMPAIGN_GS", "gs"),
     )
+
+    val all: List<Achievement> = PORTED + LADDERS + AUTHORED
 
     private val byId: Map<String, Achievement> = all.associateBy { it.id }
 
@@ -214,6 +383,69 @@ object AchievementCatalog {
      */
     fun newlyEarned(save: GameSave): List<Achievement> =
         all.filter { !save.hasAchievement(it.id) && it.isEarnedBy(save) }
+
+    /**
+     * The AS3 names a first rung already ships under.
+     *
+     * `ac-fob` predates the ladder and is recorded in live profiles under that exact string;
+     * renaming it to `ac-fob1` would un-earn it for everyone who has it, and it trims to the same
+     * family key regardless. Its label key is kept for the same kind of reason — a translation of
+     * `STR_FRIEND_OF_BEASTS` already ships in four languages.
+     */
+    private class Legacy(val id: String, val labelKey: String)
+
+    /**
+     * One collection ladder: [tiers] rungs over the same [cards].
+     *
+     * @property idStem rungs are `${idStem}1` … `${idStem}n`, so the client's family grouping —
+     *   which is `id.trimEnd { it.isDigit() }` — lands them all under [idStem].
+     * @property firstReward the card paid for the first rung — a rarity-3 card of the family, and
+     *   in every case one its booster pack cannot draw, so the badge is the only way to it.
+     */
+    private class Collection(
+        val idStem: String,
+        val labelStem: String,
+        val cards: List<Int>,
+        val tiers: List<Int>,
+        val iconId: String,
+        val firstReward: Int,
+    ) {
+        init {
+            require(tiers.size in 2..ROMAN.size) { "$idStem has ${tiers.size} tiers" }
+            require(tiers == tiers.sorted()) { "$idStem tiers descend: $tiers" }
+            require(tiers.last() == cards.size) { "$idStem's top tier is not the whole set" }
+        }
+    }
+
+    /**
+     * A ladder's rungs, as achievements.
+     *
+     * Only the ends pay: a card at the bottom, so a player who has stumbled into a third of a
+     * tribe is told there is something to finish, and [COLLECTION_MGP] at the top, which is the
+     * whole point of the ladder. The two middle rungs are progress markers and are meant to be —
+     * paying every rung would make a tribe the cheapest MGP in the game.
+     *
+     * @param legacy what the first rung is *actually* called, for the one family that predates
+     *   its own ladder; every other family's first rung is named off the stems.
+     */
+    private fun collection(family: Collection, legacy: Legacy? = null): List<Achievement> =
+        List(family.tiers.size) { index ->
+            val top = index == family.tiers.lastIndex
+            Achievement(
+                id = when {
+                    index > 0 -> "${family.idStem}${index + 1}"
+                    else -> legacy?.id ?: "${family.idStem}1"
+                },
+                labelKey = when {
+                    index > 0 -> "${family.labelStem}_${ROMAN[index]}"
+                    else -> legacy?.labelKey ?: "${family.labelStem}_I"
+                },
+                iconId = family.iconId,
+                requirement = Requirement.CardSetOwned(family.cards, family.tiers[index]),
+                reward = if (index == 0) CardItem(family.firstReward) else null,
+                mgpReward = if (top) COLLECTION_MGP else 0,
+            )
+        }
 
     private fun tripleTeam(id: String, labelKey: String, wins: Int, reward: Item? = null) =
         Achievement(id, labelKey, NPC_ICON, Requirement.NpcWins(wins), reward)
@@ -251,4 +483,39 @@ object AchievementCatalog {
 
     /** The `tripleTriadRules.as` constant, as `RULES_W` keys it. */
     private const val ROULETTE_KEY = "RULE_ROULETTE"
+
+    /**
+     * What completing any one tribe pays.
+     *
+     * The same figure for all four, though the tribes are 22 to 35 cards: the *card* rewards
+     * differ in how hard they are to reach and the money does not need to as well, and a player
+     * choosing which tribe to finish should be choosing on the cards, not on the payout.
+     */
+    private const val COLLECTION_MGP = 5_000
+
+    // The first-rung cards, by name, because an id in a reward is unreadable and the wrong one is
+    // invisible. Each is a rarity-3 card of its own family that its family's booster cannot draw.
+    private const val TOZOL_HUATOTL = 418
+
+    private const val ALEXANDER_PRIME = 419
+
+    private const val GRYNEWAHT = 448
+
+    private const val ARENVALD_LENTINUS = 473
+
+    /** The FFVIII secret card, hidden in the collection screen until it is owned. */
+    private const val MOOBA = 2159
+
+    /**
+     * FFVIII's PuPu, `STR_FF8_CARD_48` — not FFXIV's, `STR_FF14_CARD_392`, which is card 649 and a
+     * different card of the same alien.
+     */
+    private const val PUPU = 2096
+
+    // Family icons: one card of the family, drawn from the card atlas the way `ac-fob` always was.
+    private const val IFRIT = 296
+
+    private const val GAIUS_VAN_BAELSAR = 320
+
+    private const val YSHTOLA = 305
 }

@@ -6,9 +6,7 @@ import com.tripletriad.model.GameRules
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.ItemReward
 import com.tripletriad.model.MatchResult
-import com.tripletriad.model.MgpReward
 import com.tripletriad.model.Npc
-import com.tripletriad.model.NpcLevel
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,9 +27,10 @@ class CampaignRewardsTest {
         id = 1,
         nameKey = "STR_NPC_Rung",
         iconId = "rung",
-        level = NpcLevel.EXPERT,
-        matchFee = 30,
-        mgpReward = MgpReward(win = 100, draw = 40, lose = 10),
+        // The top of the scale: EXPERT, 250/100/37 MGP, 45/25/15 XP. Written as the one number
+        // the others are read off, since a rung that named a band and a payout separately could
+        // name two that disagree.
+        difficulty = 10,
         itemRewards = listOf(ItemReward(type = "card", rate = 0.4, cardId = CARD)),
     )
 

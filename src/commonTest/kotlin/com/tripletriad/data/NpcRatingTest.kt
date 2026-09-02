@@ -1,8 +1,12 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.Card
+import com.tripletriad.model.MgpReward
 import com.tripletriad.model.Npc
 import com.tripletriad.model.NpcLevel
+import com.tripletriad.model.matchFeeFor
+import com.tripletriad.model.mgpRewardFor
+import com.tripletriad.model.npcLevelFor
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -213,73 +217,27 @@ class NpcRatingTest {
     }
 
     /**
-     * Every band has a skill level, and none of them is [NpcLevel.NONE].
+     * [NpcRating.rated] moves every balance number by writing one.
      *
-     * `NONE` pays no XP at all — see `Npc.xpFor` — so an opponent in it costs a match fee and
-     * returns nothing towards a level. That is a state the data should not be able to express.
+     * The stale fixture can only be stale in one field now — the band, the fee and the payout are
+     * computed from the difficulty and there is nowhere left for a contradicting copy to sit, which
+     * is the whole point of the change. So the assertion is that all four *read* correctly after a
+     * single write.
      */
     @Test
-    fun everyBandHasALevelAndNoneOfThemPaysNothing() {
-        val levels = NpcRating.RANGE.map(NpcRating::levelFor)
+    fun ratingAnOpponentMovesEveryBalanceNumberByWritingOne() {
+        val stale = weakling.copy(difficulty = 0)
 
-        assertTrue(NpcLevel.NONE !in levels, "produced $levels")
-        assertEquals(levels.sortedBy { it.modifier }, levels, "harder must never mean less XP")
-        assertEquals(NpcLevel.EXPERT, NpcRating.levelFor(NpcRating.RANGE.last))
-        assertEquals(NpcLevel.NOVICE, NpcRating.levelFor(NpcRating.RANGE.first))
-    }
-
-    @Test
-    fun aDifficultyOffTheScaleIsAProgrammingError() {
-        for (impossible in listOf(0, 11, -1)) {
-            assertFailsWith<IllegalArgumentException> { NpcRating.levelFor(impossible) }
-            assertFailsWith<IllegalArgumentException> { NpcRating.mgpFor(impossible) }
-            assertFailsWith<IllegalArgumentException> { NpcRating.feeFor(impossible) }
-        }
-    }
-
-    /**
-     * Harder pays more, a loss always pays something, and the fee never exceeds a win.
-     *
-     * The last two are the properties the shipped AS3 data broke: one opponent declared `l: 0`, so
-     * losing to it after paying its fee returned nothing at all.
-     */
-    @Test
-    fun thePayoutRisesWithTheDifficultyAndALossAlwaysPays() {
-        val payouts = NpcRating.RANGE.map(NpcRating::mgpFor)
-
-        assertEquals(payouts.sortedBy { it.win }, payouts, "harder must never pay less")
-        assertTrue(payouts.all { it.lose > 0 }, "a loss must always pay something")
-        assertTrue(payouts.all { it.draw in it.lose..it.win }, "a draw sits between the two")
-
-        for (difficulty in NpcRating.RANGE) {
-            assertTrue(
-                NpcRating.feeFor(difficulty) < NpcRating.mgpFor(difficulty).win,
-                "difficulty $difficulty charges more than a win returns",
-            )
-        }
-        assertEquals(
-            NpcRating.RANGE.map(NpcRating::feeFor).sorted(),
-            NpcRating.RANGE.map(NpcRating::feeFor),
-            "harder must never be cheaper to sit down against",
-        )
-    }
-
-    /** [NpcRating.rated] replaces all four fields together, which is the point of one function. */
-    @Test
-    fun ratingAnOpponentReplacesAllFourBalanceFields() {
-        val stale = weakling.copy(
-            difficulty = 0,
-            level = NpcLevel.NONE,
-            matchFee = 999,
-            mgpReward = com.tripletriad.model.MgpReward(win = 1, draw = 1, lose = 0),
-        )
+        assertEquals(NpcLevel.NONE, stale.level, "an unrated opponent has no band")
+        assertEquals(0, stale.matchFee, "nor a fee")
+        assertEquals(MgpReward(), stale.mgpReward, "nor a payout")
 
         val rated = NpcRating.rated(stale, winRate = 0.0)
 
         assertEquals(NpcRating.RANGE.last, rated.difficulty)
-        assertEquals(NpcRating.levelFor(NpcRating.RANGE.last), rated.level)
-        assertEquals(NpcRating.mgpFor(NpcRating.RANGE.last), rated.mgpReward)
-        assertEquals(NpcRating.feeFor(NpcRating.RANGE.last), rated.matchFee)
+        assertEquals(npcLevelFor(NpcRating.RANGE.last), rated.level)
+        assertEquals(mgpRewardFor(NpcRating.RANGE.last), rated.mgpReward)
+        assertEquals(matchFeeFor(NpcRating.RANGE.last), rated.matchFee)
         assertEquals(stale.iconId, rated.iconId, "and nothing else about the opponent moves")
         assertEquals(stale.fetishCards, rated.fetishCards)
         assertNotEquals(stale.difficulty, rated.difficulty)

@@ -2,24 +2,41 @@ package com.tripletriad.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * [AchievementCatalog] against the 22 entries of `datas/Achievements.as`.
+ * [AchievementCatalog] against the 22 entries of `datas/Achievements.as`, and against this port's
+ * own additions on top of them.
  *
- * The thresholds are pinned from the inline comments in the AS3 `LIST`, which state each one — the
- * only documentation of intent there is.
+ * The AS3 thresholds are pinned from the inline comments in its `LIST`, which state each one — the
+ * only documentation of intent there is. The collection ladders have no such source and are pinned
+ * as literals for the same reason: a threshold nobody wrote down is one that drifts.
  */
+private const val GILGAMESH = 2128
+
+private const val PUPU = 2096
+
 class AchievementTest {
+    /** Every collection rung this port authored — the AS3 shipped only `ac-fob`. */
+    private val authoredCollections = setOf(
+        "ac-fob2", "ac-fob3", "ac-fob4",
+        "ac-fop1", "ac-fop2", "ac-fop3", "ac-fop4",
+        "ac-fog1", "ac-fog2", "ac-fog3", "ac-fog4",
+        "ac-foh1", "ac-foh2", "ac-foh3", "ac-foh4",
+        "ac-foc",
+    )
+
     @Test
-    fun theCatalogueHasTheTwentyTwoAs3Achievements() {
-        // The AS3 22 are the ones *not* keyed on a tournament: the original recorded no ladder
-        // result at all, so a campaign requirement is by construction authored here. Counted this
-        // way rather than by total, so adding an authored achievement cannot quietly pass while a
-        // ported one goes missing.
-        val ported = AchievementCatalog.all.filterNot { it.requirement is Requirement.CampaignWins }
+    fun theCatalogueStillHoldsTheTwentyTwoAs3Achievements() {
+        // The AS3 22 are the ones this port did not author: not a tournament key, and not one of
+        // the collection ladder's added rungs. Counted this way rather than by total, so adding an
+        // authored achievement cannot quietly pass while a ported one goes missing.
+        val ported = AchievementCatalog.all
+            .filterNot { it.requirement is Requirement.CampaignWins }
+            .filterNot { it.id in authoredCollections }
         assertEquals(22, ported.size)
         assertEquals(
             AchievementCatalog.all.map { it.id }.distinct().size,
@@ -31,6 +48,54 @@ class AchievementTest {
         assertEquals("ac-fob", ported.last().id)
         assertNotNull(AchievementCatalog["ac-wof6"])
         assertEquals(null, AchievementCatalog["ac-nope"])
+    }
+
+    /**
+     * Every rung the client's achievements screen groups into a family, and its threshold.
+     *
+     * Pinned as literals rather than derived from [AchievementCatalog] so that moving a tier is a
+     * visible edit here. The family key is `id.trimEnd { it.isDigit() }`, which is why `ac-fob`
+     * and `ac-fob2` are one family and why the first beast rung can keep its AS3 id.
+     */
+    @Test
+    fun theCollectionLaddersRunFromTheirFirstRungToTheWholeSet() {
+        val expected = mapOf(
+            "ac-fob" to 13, "ac-fob2" to 21, "ac-fob3" to 28, "ac-fob4" to 35,
+            "ac-fop1" to 11, "ac-fop2" to 18, "ac-fop3" to 24, "ac-fop4" to 30,
+            "ac-fog1" to 10, "ac-fog2" to 17, "ac-fog3" to 23, "ac-fog4" to 28,
+            "ac-foh1" to 8, "ac-foh2" to 13, "ac-foh3" to 18, "ac-foh4" to 22,
+            "ac-foc" to 5,
+        )
+
+        val actual = AchievementCatalog.all
+            .mapNotNull { achievement ->
+                (achievement.requirement as? Requirement.CardSetOwned)
+                    ?.let { achievement.id to it.target }
+            }
+            .toMap()
+
+        assertEquals(expected, actual)
+        assertEquals(authoredCollections + "ac-fob", actual.keys)
+        for (id in expected.keys) {
+            val set = (AchievementCatalog[id]!!.requirement as Requirement.CardSetOwned).cardIds
+            assertTrue(expected.getValue(id) <= set.size, "$id asks for more cards than exist")
+        }
+    }
+
+    /** A rung is only reachable if every rung below it is: the ladder must be monotone. */
+    @Test
+    fun eachRungOfALadderCountsTheSameCardsAsTheOneBelowIt() {
+        val ladders = AchievementCatalog.all
+            .filter { it.requirement is Requirement.CardSetOwned }
+            .groupBy { it.id.trimEnd { character -> character.isDigit() } }
+
+        for ((family, rungs) in ladders) {
+            val sets = rungs.map { (it.requirement as Requirement.CardSetOwned).cardIds }
+            assertEquals(1, sets.distinct().size, "$family's rungs count different pools")
+            val targets = rungs.map { (it.requirement as Requirement.CardSetOwned).target }
+            assertEquals(targets.sorted(), targets, "$family's rungs are out of order")
+            assertEquals(targets.distinct(), targets, "$family has two rungs at one threshold")
+        }
     }
 
     @Test
@@ -60,14 +125,45 @@ class AchievementTest {
         )
     }
 
-    /** Only three of the 22 carry a reward: `ac-tt3`, `ac-wof5`, and nothing else. */
+    /**
+     * Every reward in the catalogue, named.
+     *
+     * `ac-tt3` and `ac-wof5` are the AS3's two; the rest are this port's collection ladders, which
+     * pay a card at the bottom rung and MGP at the top. Pinned whole rather than by count, because
+     * a reward silently attached to the wrong id is exactly the mistake a count cannot see.
+     */
     @Test
-    fun onlyTheTwoAs3RewardsExist() {
-        val rewarded = AchievementCatalog.all
+    fun everyRewardIsTheOneItsAchievementIsMeantToPay() {
+        val cards = AchievementCatalog.all
             .filter { it.reward != null }
             .associate { it.id to it.reward }
 
-        assertEquals(mapOf("ac-tt3" to CardItem(331), "ac-wof5" to CardItem(335)), rewarded)
+        assertEquals(
+            mapOf(
+                "ac-tt3" to CardItem(331),
+                "ac-wof5" to CardItem(335),
+                // Tozol Huatotl, Alexander Prime, Grynewaht, Arenvald Lentinus: one rarity-3 card
+                // of each family, and Mooba for the FFVIII companions.
+                "ac-fob" to CardItem(418),
+                "ac-fop1" to CardItem(419),
+                "ac-fog1" to CardItem(448),
+                "ac-foh1" to CardItem(473),
+                "ac-foc" to CardItem(2159),
+            ),
+            cards,
+        )
+
+        val mgp = AchievementCatalog.all
+            .filter { it.mgpReward > 0 }
+            .associate { it.id to it.mgpReward }
+
+        assertEquals(
+            mapOf("ac-fob4" to 5_000, "ac-fop4" to 5_000, "ac-fog4" to 5_000, "ac-foh4" to 5_000),
+            mgp,
+            "only a completed tribe pays MGP",
+        )
+        assertTrue(AchievementCatalog["ac-fob"]!!.hasReward)
+        assertFalse(AchievementCatalog["ac-fob2"]!!.hasReward, "a middle rung pays nothing")
     }
 
     @Test
@@ -110,20 +206,35 @@ class AchievementTest {
     }
 
     /**
-     * `ac-fob` is gated on `MODE == 'ff14_'`: the same ids mean different cards in the other table.
+     * `ac-fob` still wants thirteen beast cards — but thirteen of **thirty-five**, not the whole
+     * set. The threshold is the AS3's and a profile that earned it keeps it; the pool underneath
+     * grew to every card the table types `beast`, which is what `ac-fob4` now completes.
      */
     @Test
-    fun friendOfBeastsNeedsAllThirteenBeastCardsOnAnFf14Profile() {
-        assertEquals(13, AchievementCatalog.BEAST_CARDS.size)
-        assertEquals(BoosterType.BEAST.pool, AchievementCatalog.BEAST_CARDS)
+    fun friendOfBeastsWantsThirteenOfTheThirtyFiveBeastCards() {
+        assertEquals(35, AchievementCatalog.BEAST_CARDS.size)
+        // The booster pool was this list and is now a subset of it — thirteen cards with frozen
+        // weights. They are pinned as *different* here so that widening one cannot widen the other
+        // by accident; see `AchievementCatalog.BEAST_CARDS`.
+        assertTrue(
+            AchievementCatalog.BEAST_CARDS.containsAll(BoosterType.BEAST.pool),
+            "the pack draws from the tribe",
+        )
+        assertEquals(13, BoosterType.BEAST.pool.size, "the pack is still the AS3 thirteen")
 
         val complete = GameSave(
             cards = AchievementCatalog.BEAST_CARDS.associateWith { 1 },
         )
         assertTrue(AchievementCatalog["ac-fob"]!!.isEarnedBy(complete))
+        assertTrue(AchievementCatalog["ac-fob4"]!!.isEarnedBy(complete), "the whole tribe")
+
+        val thirteen =
+            complete.copy(cards = AchievementCatalog.BEAST_CARDS.take(13).associateWith { 1 })
+        assertTrue(AchievementCatalog["ac-fob"]!!.isEarnedBy(thirteen))
+        assertFalse(AchievementCatalog["ac-fob2"]!!.isEarnedBy(thirteen), "21 beasts")
 
         val oneShort =
-            complete.copy(cards = AchievementCatalog.BEAST_CARDS.dropLast(1).associateWith { 1 })
+            complete.copy(cards = AchievementCatalog.BEAST_CARDS.take(12).associateWith { 1 })
         assertFalse(AchievementCatalog["ac-fob"]!!.isEarnedBy(oneShort))
 
         // The AS3 gated this on `MODE == 'ff14_'`. There is no mode, and there is no need for one:
@@ -133,7 +244,7 @@ class AchievementTest {
         // still exists now that an id names exactly one card.
         val elsewhere = complete.copy(
             cards = (1..AchievementCatalog.BEAST_CARDS.size)
-                .associate { Card.idFor(block = 2, number = it) to 1 },
+                .associate { Card.idFor(block = 8, number = it) to 1 },
         )
         assertFalse(
             AchievementCatalog["ac-fob"]!!.isEarnedBy(elsewhere),
@@ -154,16 +265,18 @@ class AchievementTest {
     }
 
     @Test
-    fun progressForACardSetCountsWhatIsOwned() {
+    fun progressForACardSetCountsWhatIsOwnedAgainstThatRungsTarget() {
         val save =
             GameSave(
                 cards = AchievementCatalog.BEAST_CARDS.take(6).associateWith { 1 },
             )
 
-        val progress = AchievementCatalog["ac-fob"]!!.progressFor(save)
-
-        assertEquals(6, progress.current)
-        assertEquals(13, progress.target)
+        assertEquals(6, AchievementCatalog["ac-fob"]!!.progressFor(save).current)
+        assertEquals(13, AchievementCatalog["ac-fob"]!!.progressFor(save).target)
+        // The rung above counts the same six cards against a higher bar, which is what makes one
+        // pool with four targets readable as a ladder.
+        assertEquals(6, AchievementCatalog["ac-fob2"]!!.progressFor(save).current)
+        assertEquals(21, AchievementCatalog["ac-fob2"]!!.progressFor(save).target)
     }
 
     @Test
@@ -171,9 +284,44 @@ class AchievementTest {
         // Was `progressOnTheWrongModeIsZeroRatherThanPartial`, which asserted the mode gate: a
         // profile in the other collection scored 0 rather than partial credit. The gate is gone
         // with `MODE`, so what is left to state is that unrelated cards count for nothing.
-        val unrelated = GameSave(cards = mapOf(Card.idFor(block = 2, number = 1) to 1))
+        val unrelated = GameSave(cards = mapOf(Card.idFor(block = 8, number = 1) to 1))
 
         assertEquals(0, AchievementCatalog["ac-fob"]!!.progressFor(unrelated).current)
+    }
+
+    @Test
+    fun theCompanionBadgeIsTheBoosterPoolPlusPuPu() {
+        // The badge is the pack plus exactly one card the pack cannot deal, and both halves of
+        // that matter. Gilgamesh must be in neither — he is a Guardian Force, and he was taken
+        // out of the pack for the same reason he is not in the set. PuPu must be in the set and
+        // out of the pack, so finishing the collection cannot be done at the shop counter.
+        val pack = BoosterType.COMPANION.pool
+        val set = AchievementCatalog.COMPANION_CARDS
+
+        assertFalse(GILGAMESH in set, "a Guardian Force is not a companion")
+        assertFalse(GILGAMESH in pack, "and the pack does not deal one either")
+        assertEquals(emptyList(), pack - set.toSet(), "every card the pack deals is a companion")
+        assertEquals(listOf(PUPU), set - pack.toSet(), "and the one no pack deals is PuPu")
+
+        val save = GameSave(cards = AchievementCatalog.COMPANION_CARDS.associateWith { 1 })
+
+        assertTrue(AchievementCatalog["ac-foc"]!!.isEarnedBy(save))
+        assertFalse(
+            AchievementCatalog["ac-foc"]!!.isEarnedBy(
+                save.copy(cards = AchievementCatalog.COMPANION_CARDS.drop(1).associateWith { 1 }),
+            ),
+            "four of five is not the set",
+        )
+    }
+
+    @Test
+    fun aRungCannotAskForMoreCardsThanItsPoolHolds() {
+        assertFailsWith<IllegalArgumentException> {
+            Requirement.CardSetOwned(listOf(1, 2, 3), target = 4)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            Requirement.CardSetOwned(listOf(1, 2, 3), target = 0)
+        }
     }
 
     @Test

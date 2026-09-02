@@ -19,7 +19,12 @@ data class AchievementStatus(
 data class AchievementAward(
     /** The profile with the achievements recorded and any rewards in the bag. */
     val save: GameSave,
-    /** What was just earned, in catalogue order. Empty when nothing was. */
+    /**
+     * What was just earned. Empty when nothing was.
+     *
+     * Catalogue order within each round of [AchievementRepository.credit], rounds in sequence —
+     * so an achievement a reward paid for follows the one that paid for it.
+     */
     val earned: List<Achievement>,
 ) {
     val hasAwards: Boolean get() = earned.isNotEmpty()
@@ -69,31 +74,47 @@ class AchievementRepository(
      * Idempotent by construction, not by accident: anything already recorded is filtered out, so
      * calling this after every match is correct and cheap.
      *
-     * ### One round is enough, and that is a property of the data
+     * ### Why this iterates, and why the loop cannot run away
      *
-     * Crediting cannot enable a further achievement, so this does not need to iterate to a fixed
-     * point. The reasoning: the only rewards in the catalogue are `CardItem`s, [Inventory.add] puts
-     * them in the **bag**, and no [Requirement] reads the bag — the closest, `CardsOwned`, counts
-     * [GameSave.cards], which a card item only joins when [Inventory.use] consumes it. So a reward
-     * can influence an achievement one player action later, never within a credit.
+     * A reward used to be unable to earn another achievement. The only rewards were `CardItem`s,
+     * [Inventory.add] puts those in the **bag**, and no [Requirement] reads the bag — the closest,
+     * `CardsOwned`, counts [GameSave.cards], which a card item joins only when [Inventory.use]
+     * consumes it. One pass was therefore provably enough, and this said so at length.
      *
-     * If a future reward ever *did* satisfy a requirement directly, this would need a second pass —
-     * and `AchievementRepositoryTest` pins the current behaviour so that change is visible rather
-     * than silent. A loop here would have been the wrong answer regardless: it invites a cycle
-     * between an achievement and its own reward.
+     * [Achievement.mgpReward] ended that. It pays into the purse, and `MgpHeld` reads the purse:
+     * completing a tribe for 5 000 MGP can carry a profile across `ac-mp1` in the same instant.
+     * One pass would leave that hanging until the next match — the player would see the MGP land
+     * and the badge it plainly earned not appear.
+     *
+     * The loop terminates because each round *must* record at least one achievement to continue,
+     * and the catalogue is finite: at most `catalog.size` rounds, and in practice one or two. The
+     * cycle a loop invites — an achievement whose own reward earns it — cannot form either, since
+     * a round only ever considers ids not yet recorded and an id is recorded before its reward is
+     * paid. `AchievementRepositoryTest` pins both the cascade and the single-round case.
      *
      * @param at epoch millis to record as the moment each was earned, as the AS3
-     *   `new Date().getTime()` does. Injected because `commonMain` has no clock.
+     *   `new Date().getTime()` does. Injected because `commonMain` has no clock. Every achievement
+     *   of one cascade shares it: they were earned by one act, and dating the second a millisecond
+     *   later would be a precision this does not have.
      */
     fun credit(save: GameSave, at: Long): AchievementAward {
-        val newly = catalog.filter { !save.hasAchievement(it.id) && it.isEarnedBy(save) }
-        if (newly.isEmpty()) return AchievementAward(save, emptyList())
-
         var updated = save
-        for (achievement in newly) {
-            updated = updated.withAchievement(achievement.id, at)
-            achievement.reward?.let { updated = Inventory.add(updated, it) }
+        val earned = mutableListOf<Achievement>()
+
+        while (true) {
+            val newly = catalog.filter { !updated.hasAchievement(it.id) && it.isEarnedBy(updated) }
+            if (newly.isEmpty()) break
+            for (achievement in newly) {
+                updated = updated.withAchievement(achievement.id, at)
+                achievement.reward?.let { updated = Inventory.add(updated, it) }
+                if (achievement.mgpReward > 0) updated = updated.withMgp(achievement.mgpReward)
+            }
+            earned += newly
         }
-        return AchievementAward(updated, newly)
+
+        // The list is in catalogue order *within* each round rather than across the whole award:
+        // a badge a reward paid for belongs after the badge that paid for it, whatever order the
+        // catalogue happens to list them in.
+        return AchievementAward(updated, earned)
     }
 }

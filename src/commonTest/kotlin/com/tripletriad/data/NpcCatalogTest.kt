@@ -19,6 +19,10 @@ class NpcCatalogTest {
     /**
      * Copied from the extractor's output for `NPCs.as` entries 1 and 8, plus one from the other
      * table — and each now declaring the format it plays, which is what replaced the two arrays.
+     *
+     * `kid` keeps the `level` / `matchFee` / `MGPReward` trio that the shipped file no longer
+     * carries, on purpose: those are computed from `difficulty` now, and a bundle written before
+     * they were removed must still load — with the stale numbers ignored rather than believed.
      */
     private val json = """
         {
@@ -31,9 +35,6 @@ class NpcCatalogTest {
               "rules": ["RULE_ALL_OPEN"],
               "fetishesCards": [2, 4, 5, 7, 13],
               "cards": [],
-              "level": "STR_NPC_LEVEL_NOVICE",
-              "matchFee": 5,
-              "MGPReward": { "w": 10, "d": 4, "l": 1 },
               "itemRewards": [
                 { "potion": "MGP_BOOST", "type": "potion", "rate": 0.02 },
                 { "card": 4, "type": "card", "rate": 0.25 }
@@ -48,9 +49,6 @@ class NpcCatalogTest {
               "rules": ["RULE_THREE_OPEN"],
               "fetishesCards": [41, 49, 39],
               "cards": [38, 22, 47, 20],
-              "level": "STR_NPC_LEVEL_AVERAGE",
-              "matchFee": 20,
-              "MGPReward": { "w": 47, "d": 18, "l": 7 },
               "itemRewards": [],
               "difficulty": 5,
               "availability": { "begins": 20, "ends": 8 }
@@ -67,7 +65,7 @@ class NpcCatalogTest {
               "matchFee": 5,
               "MGPReward": { "w": 15, "d": 7, "l": 2 },
               "itemRewards": [],
-              "difficulty": 0
+              "difficulty": 3
             },
             {
               "id": 99,
@@ -77,11 +75,8 @@ class NpcCatalogTest {
               "rules": ["RULE_RANDOM", "RULE_ROULETTE"],
               "fetishesCards": [],
               "cards": [1, 2, 3],
-              "level": "STR_NPC_LEVEL_EXPERT",
-              "matchFee": 30,
-              "MGPReward": { "w": 128, "d": 56, "l": 28 },
               "itemRewards": [],
-              "difficulty": 0,
+              "difficulty": 9,
               "requiresAchievement": "ac-cmp-cc"
             }
           ]
@@ -100,16 +95,33 @@ class NpcCatalogTest {
         assertEquals(listOf("RULE_ALL_OPEN"), master.ruleKeys)
         assertEquals(listOf(2, 4, 5, 7, 13), master.fetishCards)
         assertTrue(master.cards.isEmpty())
+        assertEquals(1, master.difficulty)
+        // Not fields any more: read off the difficulty, and nothing in the file can say otherwise.
         assertEquals(NpcLevel.NOVICE, master.level)
         assertEquals(5, master.matchFee)
-        assertEquals(10, master.mgpReward.win)
-        assertEquals(4, master.mgpReward.draw)
-        assertEquals(1, master.mgpReward.lose)
-        assertEquals(1, master.difficulty)
+        assertEquals(25, master.mgpReward.win)
+        assertEquals(10, master.mgpReward.draw)
+        assertEquals(3, master.mgpReward.lose)
         assertEquals(2, master.itemRewards.size)
         assertEquals(PotionType.MGP, master.itemRewards.first().potion)
         assertEquals(0.02, master.itemRewards.first().rate)
         assertEquals(4, master.itemRewards[1].cardId)
+    }
+
+    /**
+     * A bundle still carrying `level` / `matchFee` / `MGPReward` loads, and ignores them.
+     *
+     * They were removed from `npcs.json` when they became functions of `difficulty`, and a reader
+     * that *believed* them would be worse than one that failed on them: `kid` declares a NOVICE
+     * paying 15/7/2 at difficulty 2, and what it must read as is the difficulty-2 row.
+     */
+    @Test
+    fun theRemovedBalanceKeysAreIgnoredRatherThanRead() {
+        val kid = catalog.all.first { it.iconId == "kid" }
+
+        assertEquals(NpcLevel.INITIATE, kid.level, "not the NOVICE the stale key claims")
+        assertEquals(15, kid.matchFee, "not the 5 it claims")
+        assertEquals(75, kid.mgpReward.win, "not the 15 it claims")
     }
 
     /** Absent in most entries, so it must default rather than fail to parse. */
@@ -228,9 +240,10 @@ class NpcCatalogTest {
         assertEquals(0, catalog.lockedByAchievement(FF8, earned = setOf(CARD_CLUB)))
         assertEquals(0, catalog.lockedByAchievement(FF14, earned = emptySet()), "none in ff14")
 
-        // The FFVIII table declares difficulty 0 throughout, so nothing there is level-locked —
-        // which is what makes this the cleanest place to show the two counts are independent.
-        assertEquals(0, catalog.lockedByLevel(FF8, hour = 12, level = 1))
+        // At a level that reaches everybody, nothing is level-locked and the achievement is still
+        // shut — which is the point: the two counts answer different questions and one going to
+        // zero says nothing about the other.
+        assertEquals(0, catalog.lockedByLevel(FF8, hour = 12, level = 10))
     }
 
     /** `ignoreUnknownKeys`, so a field this build does not know about does not break parsing. */

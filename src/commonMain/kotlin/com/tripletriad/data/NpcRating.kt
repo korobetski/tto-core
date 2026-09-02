@@ -1,15 +1,13 @@
 package com.tripletriad.data
 
 import com.tripletriad.model.CardColor
+import com.tripletriad.model.DIFFICULTY_RANGE
 import com.tripletriad.model.Deck
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.HAND_SIZE
 import com.tripletriad.model.MatchAi
 import com.tripletriad.model.MatchResult
-import com.tripletriad.model.MgpReward
 import com.tripletriad.model.Npc
-import com.tripletriad.model.NpcLevel
-import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
@@ -65,8 +63,14 @@ object NpcRating {
      */
     const val TRIALS: Int = 400
 
-    /** The scale [difficultyFor] produces, and the one `Npc.difficulty` documents. */
-    val RANGE: IntRange = 1..10
+    /**
+     * The scale [difficultyFor] produces.
+     *
+     * [DIFFICULTY_RANGE] itself, not a copy of it: the scale is declared next to the arithmetic
+     * that reads it — `Npc` computes its band, fee and payout from a difficulty and cannot import
+     * `data` to learn what one is — and named here because this is what produces it.
+     */
+    val RANGE: IntRange = DIFFICULTY_RANGE
 
     /** How many cards the yardstick owns. See [referenceProfile]. */
     const val REFERENCE_CARDS: Int = 10
@@ -189,82 +193,14 @@ object NpcRating {
     }
 
     /**
-     * The skill band [difficulty] belongs to, which is what pays the XP.
+     * [npc] rated: its difficulty replaced by what [winRate] says.
      *
-     * XP is **not** re-derived here. [NpcLevel.xpReward] is the AS3 formula — `25 + 2m` on a win,
-     * `10 + 1.5m` on a draw, `5 + m` on a loss — and it is left exactly as it was, because it is a
-     * curve somebody balanced and there is nothing wrong with it. What was wrong is *which band an
-     * opponent was in*: `level` was authored per table alongside the difficulty it now disagrees
-     * with. Re-deriving the band from measured strength puts the existing curve back on its feet.
-     *
-     * Five bands over ten points, so two difficulties to a band. [NpcLevel.NONE] is never produced:
-     * it pays no XP at all, and an opponent that costs a match fee and pays nothing is a bug the
-     * data should not be able to express.
+     * One field, where this used to write four. `Npc.level`, `Npc.matchFee` and `Npc.mgpReward`
+     * are computed from the difficulty now (`model/NpcBalance.kt`), so rating an opponent moves all
+     * four numbers by writing one, and `npcs.json` has no way to carry a band that disagrees with
+     * the strength it was measured at.
      */
-    fun levelFor(difficulty: Int): NpcLevel {
-        require(difficulty in RANGE) { "difficulty must be in $RANGE, was $difficulty" }
-        val ordinal = (difficulty + 1) / 2
-        return NpcLevel.entries.first { it.modifier == ordinal }
-    }
-
-    /**
-     * What a win, a draw and a loss pay against an opponent of this [difficulty].
-     *
-     * A straight line rather than the authored table, and the line is fitted to what the authored
-     * table *meant*: a win against the easiest opponent pays [WIN_BASE], and each difficulty step
-     * adds [WIN_STEP], so the hardest pays 250. The old FFXIV spread was 0..182 and the FFVIII one
-     * 15..128 — the top of the new scale is close to the old FFXIV top, so a player's expectations
-     * about what a hard opponent is worth survive, and the bottom stops being zero.
-     *
-     * **A loss always pays something.** `PVEMatchScreen.endGame` pays `MGPReward.l + rand(5)` on a
-     * defeat, and one shipped opponent declares `l: 0` — so losing to it, having paid a fee, could
-     * return nothing at all. A floor of [LOSE_FLOOR] is a deliberate change: a beginner who loses
-     * their first five matches should still be able to afford the sixth.
-     *
-     * Draws sit between, nearer the loss, because a draw is a match nobody won.
-     */
-    fun mgpFor(difficulty: Int): MgpReward {
-        require(difficulty in RANGE) { "difficulty must be in $RANGE, was $difficulty" }
-        val win = WIN_BASE + (difficulty - 1) * WIN_STEP
-        return MgpReward(
-            win = win,
-            draw = (win * DRAW_SHARE).roundToInt(),
-            lose = (win * LOSE_SHARE).roundToInt().coerceAtLeast(LOSE_FLOOR),
-        )
-    }
-
-    /**
-     * What it costs to sit down.
-     *
-     * Carried as data and **not deducted** — see [MatchRewards], which explains at length why the
-     * AS3 declares this field for all 85 opponents and never reads it. It is scaled with the rest
-     * so the opponent list stays coherent: a row that says "fee 40, pays 30" reads as a bad deal
-     * whether or not the fee is charged, and the old tables produced several of those.
-     */
-    fun feeFor(difficulty: Int): Int {
-        require(difficulty in RANGE) { "difficulty must be in $RANGE, was $difficulty" }
-        return FEE_BASE + (difficulty - 1) * FEE_STEP
-    }
-
-    /** [npc] with its difficulty, level, payout and fee replaced by what [winRate] says. */
-    fun rated(npc: Npc, winRate: Double): Npc {
-        val difficulty = difficultyFor(winRate)
-        return npc.copy(
-            difficulty = difficulty,
-            level = levelFor(difficulty),
-            mgpReward = mgpFor(difficulty),
-            matchFee = feeFor(difficulty),
-        )
-    }
+    fun rated(npc: Npc, winRate: Double): Npc = npc.copy(difficulty = difficultyFor(winRate))
 
     private const val DRAW_CREDIT = 0.5
-
-    private const val WIN_BASE = 25
-    private const val WIN_STEP = 25
-    private const val DRAW_SHARE = 0.35
-    private const val LOSE_SHARE = 0.12
-    private const val LOSE_FLOOR = 3
-
-    private const val FEE_BASE = 5
-    private const val FEE_STEP = 4
 }
