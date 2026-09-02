@@ -12,12 +12,12 @@ import kotlin.test.assertTrue
  * [NpcCatalogParser] against a fragment of the real `npcs.json`, so this runs on every target.
  *
  * The bundled file in full is covered by `NpcBundleTest`, which needs the resource loader. What is
- * pinned here is the **wire shape** the extractor emits — a renamed field would otherwise read as
+ * pinned here is the **wire shape** of the bundle — a renamed field would otherwise read as
  * its default and an opponent would quietly lose its rules.
  */
 class NpcCatalogTest {
     /**
-     * Copied from the extractor's output for `NPCs.as` entries 1 and 8, plus one from the other
+     * Copied from the shipped bundle's `NPCs.as` entries 1 and 8, plus one from the other
      * table — and each now declaring the format it plays, which is what replaced the two arrays.
      *
      * `kid` keeps the `level` / `matchFee` / `MGPReward` trio that the shipped file no longer
@@ -86,7 +86,7 @@ class NpcCatalogTest {
     private val catalog = NpcCatalogParser.parse(json)
 
     @Test
-    fun everyFieldOfTheExtractorsShapeIsRead() {
+    fun everyFieldOfTheBundlesShapeIsRead() {
         val master = catalog.all.first()
 
         assertEquals(1, master.id)

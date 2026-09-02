@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Every opponent, as extracted from `sources/src/tto/datas/NPCs.as` by `tools/extract_npcs.py`.
+ * Every opponent, originally extracted from `sources/src/tto/datas/NPCs.as`.
  *
  * ### One list, not two
  *

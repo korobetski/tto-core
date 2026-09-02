@@ -73,7 +73,7 @@ data class StarterCatalog(val starters: List<Starter>) {
     /**
      * Everything wrong with this catalogue, as sentences, or empty when it is sound.
      *
-     * The five refusals of § What an importer should refuse. They are content bugs, and every one
+     * The five ways a starter can be wrong. They are content bugs, and every one
      * of them reaches a player as something worse than an error message — a starter of the wrong
      * size is a character that begins stronger or weaker than every other, and a released set with
      * no starter is a set nobody can begin with.

@@ -108,7 +108,7 @@ data class MgpReward(
  *
  * The AS3 objects are `{type:"card"|"potion"|"booster", card|potion|booster:…, rate:0.25}`.
  * Modelled as one record with three optional payload fields rather than a sealed hierarchy because
- * that is the shape in `NPCs.as` and the extractor copies it across unchanged; [item] is where it
+ * that is the shape in `NPCs.as` and `npcs.json` carries it across unchanged; [item] is where it
  * becomes typed.
  *
  * @property rate drop probability, compared against a uniform draw — see [Npc.rollRewards].
@@ -201,8 +201,7 @@ data class Availability(
 }
 
 /**
- * A PvE opponent. `datas/NPC.as`, with its data coming from `datas/NPCs.as` via
- * `tools/extract_npcs.py`.
+ * A PvE opponent. `datas/NPC.as`, with its data originally from `datas/NPCs.as`.
  *
  * ### Data, not a display object
  *

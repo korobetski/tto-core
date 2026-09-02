@@ -166,7 +166,7 @@ private fun CardSet.numberingProblems(cardsOf: (Int) -> List<Card>): List<String
  * catalog to parse and a completely different way of getting hold of it.
  */
 object CardCatalogParser {
-    // The extractor emits every field, but being lenient about unknown keys means a
+    // The bundle carries every field, but being lenient about unknown keys means a
     // later field addition does not break older clients.
     private val json = Json { ignoreUnknownKeys = true }
 

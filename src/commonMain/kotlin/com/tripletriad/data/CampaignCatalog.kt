@@ -67,8 +67,8 @@ data class CampaignStep(
  * — the ladder versions add `RULE_SUDDEN_DEATH`, waive the per-match fee (the entry fee having been
  * paid up front) and, in the Gold Saucer, carry different card pools and richer rewards. The
  * original constructs them inline and never consults `NPCs.LIST`, so a rung is a whole opponent
- * record rather than an override of one. `tools/extract_campaigns.py` reports the differences on
- * every run.
+ * record rather than an override of one — the one thing they may not differ on is their balance,
+ * which `CampaignBundleTest` holds to the roster's.
  *
  * @property key `cc` or `gs`, the ladder's stable identity.
  * @property nameKey `STR_CCGROUP` / `STR_GSGROUP`, the title of its entry screen.
@@ -152,12 +152,12 @@ data class Campaign(
 }
 
 /**
- * The ladders, as extracted by `tools/extract_campaigns.py`.
+ * The ladders.
  *
  * Its own bundle rather than more of `npcs.json`, because it is not a catalogue of opponents: it is
  * two ordered sequences with a fee and some dialogue, and thirteen of its records are near-twins of
- * ones already in that file. Keeping them apart is what lets the extractor *report* the differences
- * instead of a re-import quietly flattening them.
+ * ones already in that file. Keeping them apart is what makes the differences between a rung and
+ * its catalogue twin visible instead of flattened.
  */
 @Serializable
 data class CampaignCatalog(
