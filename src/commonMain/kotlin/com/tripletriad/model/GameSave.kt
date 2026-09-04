@@ -231,7 +231,8 @@ data class GameSave(
     /** `0` or `1`. An AS3 `uint` used as a flag; kept as written. */
     @SerialName("ADMIN") val admin: Int = 0,
     /**
-     * Card id to **how many copies** are owned. The starter five are `Save.as:30`.
+     * Card id to **how many copies** are owned. Empty on a profile that has not opened a starter
+     * box yet — see [new].
      *
      * A map and not a list of ids, which is what the AS3 stored and what this port carried until
      * `docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md` § 1 — a card can be owned several
@@ -250,10 +251,9 @@ data class GameSave(
      */
     @SerialName("CARDS")
     @Serializable(with = CardCopiesSerializer::class)
-    val cards: Map<Int, Int> = defaultCollection(),
+    val cards: Map<Int, Int> = emptyMap(),
     @SerialName("DECKS")
-    val decks: List<Deck> =
-        listOf(Deck(DEFAULT_DECK_NAME, defaultCards())),
+    val decks: List<Deck> = emptyList(),
     @SerialName("STATS") val stats: Stats = Stats(),
     /** The inventory. `Save.as:33` — a list of `Item.__toJSON()` objects. */
     @SerialName("BAG") val bag: List<Item> = emptyList(),
@@ -705,44 +705,27 @@ data class GameSave(
         const val STARTING_MGP = 100
 
         /**
-         * `Save.as:30`. The same five **numbers** seed the collection and the starter deck.
-         *
-         * Numbers, not ids, and the distinction is the whole of the change: these used to be read
-         * through `MODE`, so a new FFVIII character was given the first, third, sixth, seventh and
-         * tenth FFVIII cards. Ids are global now, so a bare `1` names a card in block 1 whatever
-         * table the character plays — and an FFVIII character would start holding five FFXIV cards
-         * it cannot field. [defaultCards] resolves them against the set instead.
-         *
-         * `docs/migration/19-CARD-SETS-AND-FORMATS.md` deletes all of this in favour of a starter
-         * pack chosen per set, which is the real answer; this is the bridge until then.
-         */
-        val DEFAULT_CARD_NUMBERS: List<Int> = listOf(1, 3, 6, 7, 10)
-
-        /**
-         * [DEFAULT_CARD_NUMBERS] as ids in the first block.
-         *
-         * The block is no longer a parameter because a character no longer belongs to a set —
-         * `MODE` is gone. It hardly matters what these are: every creation path opens a starter
-         * pack over the top, and `StarterPack.opened` **replaces** the card list and the decks
-         * rather than adding to them. What is left here is the bare floor a `GameSave` has before
-         * anything has been granted to it, which only a test ever sees.
-         */
-        fun defaultCards(): List<Int> =
-            DEFAULT_CARD_NUMBERS.map { Card.idFor(block = FIRST_BLOCK, number = it) }
-
-        /** [defaultCards], one copy each — the shape [cards] holds. */
-        fun defaultCollection(): Map<Int, Int> = defaultCards().associateWith { 1 }
-
-        /** The block the bare defaults come from. See [defaultCards]. */
-        private const val FIRST_BLOCK = 1
-
-        /**
-         * A brand-new profile.
+         * A brand-new profile, **holding nothing**.
          *
          * `setToDefaultValues()` (`Save.as:21-48`), with the two timestamps injected rather than
          * read from a clock: `commonMain` has no `System.currentTimeMillis`, and a model whose
          * defaults read the wall clock cannot be tested — the same reasoning
          * `docs/migration/13-DATA-MODELS.md` applies to `GameState`.
+         *
+         * ### Why it deals no cards, where `Save.as:30` dealt five
+         *
+         * Because those five were a lie the moment a player could choose a box. They were numbers
+         * read through `MODE` — the first, third, sixth, seventh and tenth card of *whichever*
+         * table was selected — and global card ids turned them into five cards of block 1, FFXIV,
+         * for everybody. A character registered on a server was created from this function and
+         * then never granted anything else: `StarterPack.opened` ran on the client's copy and
+         * `withServerOwnedFrom` took `cards` straight back off it. Choosing the FFVIII box and
+         * walking into the first match with five FFXIV monsters is what that looked like.
+         *
+         * So there is no floor any more, and `StarterPack.isOwedBy` is true of a profile this
+         * function made — which is exactly what it should say about a character that has not yet
+         * been dealt a box. Every creation path opens one: `SaveRepository.create` locally,
+         * `POST /me/starter` with the chosen `starterId` on an account.
          */
         fun new(
             username: String = DEFAULT_USERNAME,
@@ -751,10 +734,6 @@ data class GameSave(
             username = username,
             creationDate = createdAt,
             lastSave = createdAt,
-            // Not the field defaults: those can only name one set, and this is where the set is
-            // finally known. See [DEFAULT_CARD_NUMBERS].
-            cards = defaultCollection(),
-            decks = listOf(Deck(DEFAULT_DECK_NAME, defaultCards())),
         )
     }
 }

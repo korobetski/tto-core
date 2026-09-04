@@ -1,5 +1,6 @@
 package com.tripletriad.model
 
+import com.tripletriad.data.StarterPack
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,10 +28,8 @@ class GameSaveTest {
 
         assertEquals("Kuplu Kopo", save.username)
         assertEquals(0, save.admin)
-        assertEquals(GameSave.defaultCollection(), save.cards)
-        assertEquals(1, save.decks.size)
-        assertEquals("Starter deck", save.decks.first().name)
-        assertEquals(GameSave.defaultCards(), save.decks.first().cards)
+        assertEquals(emptyMap(), save.cards, "a character is dealt its box, not seeded with one")
+        assertEquals(emptyList(), save.decks)
         assertEquals(Stats(), save.stats)
         assertTrue(save.bag.isEmpty())
         assertEquals(Boons(), save.boons)
@@ -49,11 +48,17 @@ class GameSaveTest {
         assertEquals(save.creationDate, save.lastSave, "a new profile has never been saved since")
     }
 
-    /** The starter deck must be playable, or a new profile cannot start a match. */
+    /**
+     * A new profile cannot start a match, and that is now the point.
+     *
+     * It used to assert the opposite — that `new` left a complete deck — and that assertion was
+     * what made the starter bug invisible: five cards of block 1 for everybody, indistinguishable
+     * from a box that had been chosen. `StarterPack.isOwedBy` is what a creation path asks now, and
+     * both of them open a box over the top. See `GameSave.new`.
+     */
     @Test
-    fun theStarterDeckIsComplete() {
-        assertTrue(GameSave.new(createdAt = 0).decks.first().isComplete)
-        assertEquals(HAND_SIZE, GameSave.defaultCards().size)
+    fun aNewProfileCannotFieldADeckUntilItsBoxIsOpened() {
+        assertTrue(StarterPack.isOwedBy(GameSave.new(createdAt = 0)))
     }
 
     @Test
@@ -117,7 +122,7 @@ class GameSaveTest {
         val save = json.decodeFromString<GameSave>("""{"USERNAME":"Sparse"}""")
 
         assertEquals("Sparse", save.username)
-        assertEquals(GameSave.defaultCollection(), save.cards)
+        assertEquals(emptyMap(), save.cards)
         assertTrue(save.achievements.isEmpty())
     }
 
@@ -345,14 +350,15 @@ class GameSaveTest {
     @Test
     fun writingASlotBeyondTheEndFillsTheOnesBefore() {
         val deck = Deck("Third", listOf(1, 2, 3, 4, 5))
+        val first = Deck(GameSave.DEFAULT_DECK_NAME, listOf(6, 7, 8, 9, 10))
 
-        val save = GameSave.new(createdAt = 0L).withDeck(2, deck)
+        val save = GameSave.new(createdAt = 0L).copy(decks = listOf(first)).withDeck(2, deck)
 
         assertEquals(3, save.decks.size)
         assertEquals(deck, save.decks[2])
         assertEquals("", save.decks[1].name, "the filled slot is unnamed — the label is the UI's")
         assertTrue(save.decks[1].cards.isEmpty())
-        assertEquals(GameSave.DEFAULT_DECK_NAME, save.decks[0].name, "slot 0 is untouched")
+        assertEquals(first, save.decks[0], "slot 0 is untouched")
     }
 
     @Test
@@ -369,7 +375,9 @@ class GameSaveTest {
      */
     @Test
     fun clearingADeckEmptiesItAndKeepsItsName() {
-        val save = GameSave.new(createdAt = 0L).clearingDeck(0)
+        val save = GameSave.new(createdAt = 0L)
+            .copy(decks = listOf(Deck(GameSave.DEFAULT_DECK_NAME, listOf(1, 2, 3, 4, 5))))
+            .clearingDeck(0)
 
         assertEquals(1, save.decks.size)
         assertEquals(GameSave.DEFAULT_DECK_NAME, save.decks[0].name)

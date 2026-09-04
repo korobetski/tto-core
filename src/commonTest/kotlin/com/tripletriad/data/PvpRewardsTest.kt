@@ -3,6 +3,7 @@ package com.tripletriad.data
 import com.tripletriad.model.Boons
 import com.tripletriad.model.Card
 import com.tripletriad.model.DailyQuestCatalog
+import com.tripletriad.model.Deck
 import com.tripletriad.model.GameRules
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.MatchResult
@@ -232,12 +233,10 @@ class PvpRewardsTest {
      */
     @Test
     fun aDeckNamingTheLostCardIsNotRewritten() {
-        val holding = profile.withCard(wagered)
+        val others = (1..4).map { Card.idFor(block = 1, number = it) }
+        val holding = others.fold(profile.withCard(wagered)) { save, id -> save.withCard(id) }
         val withDeck = holding.copy(
-            decks = listOf(
-                holding.decks.first()
-                    .copy(cards = listOf(wagered) + holding.cards.keys.take(4)),
-            ),
+            decks = listOf(Deck(GameSave.DEFAULT_DECK_NAME, listOf(wagered) + others)),
         )
 
         val credited = credit(MatchResult.LOSE, save = withDeck, cardsLost = listOf(wagered))

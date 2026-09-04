@@ -1,17 +1,19 @@
 package com.tripletriad.data
 
+import com.tripletriad.model.Card
 import com.tripletriad.model.Deck
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.HAND_SIZE
+import kotlin.random.Random
 
 /**
  * Granting a character the box it opens with, and repairing one that never got a usable box.
  *
  * ### What the box is
  *
- * [StarterCatalog] — `starters.json`, ten cards, document 19's replacement for the AS3's hard-coded
- * five. The composition rule and the reasoning behind it are documented there; this type is the two
- * places the grant happens.
+ * [StarterCatalog] — `starters.json`, nine cards, document 19's replacement for the AS3's
+ * hard-coded five. The composition rule and the reasoning behind it are documented there; this type
+ * is the two places the grant happens, and the one place the four unauthored cards are drawn.
  *
  * ### Why the same object answers both questions
  *
@@ -21,23 +23,21 @@ import com.tripletriad.model.HAND_SIZE
  * without support. One rule — *fewer than five distinct cards* — asked in both places, rather than
  * a screen-local guess in each.
  *
- * ### The choice is a real one now
+ * ### The grant is the server's, on an account
  *
- * `MODE` is gone, so opening the FFXIV box no longer confines a player to FFXIV: the shop, the
- * opponents and the campaign are questions of *format*, asked at the match. A starter is what a
- * character is dealt on its first day and nothing more, which is what document 19 asked for.
- *
- * ### What is not document 19 yet
- *
- * **The grant is the client's.** Document 19 § The server grants it, not the client puts it on the
- * server: the client would send `starterId` and never the cards, and the server would resolve it
- * against its own copy of `starters.json`. That needs the `NewCharacter` endpoint of document 18,
- * which is *proposed* and does not exist — today the server creates the character at registration.
- * Until then the client grants, and this comment is the marker for where that moves.
+ * It was not, and that was a bug a player could see: the client applied [opened] to its own copy
+ * and pushed the profile, `GameSave.withServerOwnedFrom` took `cards` straight back off it, and a
+ * character created by choosing the FFVIII box walked into its first match holding five FFXIV
+ * cards — the floor `GameSave.new` used to seed. So `GameSave.new` deals **nothing** now, and the
+ * choice reaches the server as `ClaimStarterRequest.starterId`, which it resolves against its own
+ * copy of the catalogue. The client never sends a card id, exactly as it never sends a score.
  */
 object StarterPack {
     /** How many cards a character needs before it can field a deck at all. */
     const val SIZE: Int = HAND_SIZE
+
+    /** How many of the box's cards are drawn rather than authored. See [StarterCatalog]. */
+    const val DRAWN: Int = 4
 
     /**
      * How many distinct cards [save] owns.
@@ -55,30 +55,65 @@ object StarterPack {
     fun isOwedBy(save: GameSave): Boolean = playableCards(save) < SIZE
 
     /**
-     * [save] holding exactly [starter]'s cards, with its deck in the first slot.
+     * What [starter]'s four drawn cards may come out of, in id order.
+     *
+     * The block's **commons**, minus the authored five. Commons because the deck already carries
+     * the one card the box is allowed to be proud of, and four more rares would make the draw worth
+     * more than the choice; minus the five because a "draw" that hands back a card the player was
+     * already given is a card the player did not get.
+     *
+     * Sorted rather than left in catalogue order, so the shuffle below is the only source of
+     * variation and a draw is reproducible from its seed on both ends.
+     */
+    fun pool(starter: Starter, cards: Map<Int, Card>): List<Int> = cards.values
+        .filter {
+            it.block == starter.block &&
+                it.rarity == StarterCatalog.COMMON_RARITY &&
+                it.id !in starter.deck
+        }
+        .map { it.id }
+        .sorted()
+
+    /**
+     * Four cards out of [pool], or fewer when the block cannot fill it.
+     *
+     * Fewer rather than a throw: `StarterCatalog.violations` refuses a block too thin to draw from
+     * at authoring time, and a shipped catalogue that slipped past it should deal a small box
+     * rather than fail to create a character.
+     */
+    fun drawn(starter: Starter, cards: Map<Int, Card>, random: Random): List<Int> =
+        pool(starter, cards).shuffled(random).take(DRAWN)
+
+    /** The nine ids [starter] deals: the authored five, then the draw. */
+    fun contentsOf(starter: Starter, cards: Map<Int, Card>, random: Random): List<Int> =
+        starter.deck + drawn(starter, cards, random)
+
+    /**
+     * [save] holding exactly [starter]'s nine cards, with its deck in the first slot.
      *
      * The one place a starter is *written* onto a profile, and therefore the one place the shape of
      * that write is decided: one copy of each card, and the authored five as the opening deck.
      * Both creation paths go through it, which is what stops a character created locally and a
-     * character created by registering from being dealt different boxes — they were, until this
-     * existed: `GameSave.new` still seeds the AS3's five, and only the account path had been moved
-     * onto the catalogue.
+     * character created by registering from being dealt different boxes — they were, and the way
+     * they were is in this object's KDoc.
      *
      * A **replacement** and not a top-up, unlike [grantedTo], and only sound because of where it is
-     * called from: the starter is chosen once, at creation, before a single match — so the cards
-     * being dropped are the defaults dealt a moment ago and nothing else.
+     * called from: the starter is chosen once, before a single match, on a profile that owns
+     * nothing — `GameSave.new` deals no cards at all.
      */
-    fun opened(save: GameSave, starter: Starter): GameSave = save.copy(
-        cards = starter.cards.associateWith { 1 },
-        decks = listOf(Deck(GameSave.DEFAULT_DECK_NAME, starter.deck)),
-    )
+    fun opened(save: GameSave, starter: Starter, cards: Map<Int, Card>, random: Random): GameSave =
+        save.copy(
+            cards = contentsOf(starter, cards, random).associateWith { 1 },
+            decks = listOf(Deck(GameSave.DEFAULT_DECK_NAME, starter.deck)),
+        )
 
     /**
-     * [save] with the starter pack in it, or unchanged when it was not owed one.
+     * [save] with a starter pack in it, or unchanged when it was not owed one.
      *
      * Additive: a character that owns three fieldable cards keeps them and is topped up, because
      * the two it is missing are the whole of what is wrong with it. Copies already held are not
-     * doubled — this is a repair, not a reward.
+     * doubled — this is a repair, not a reward — so a profile that already holds some of the box
+     * ends up short of nine, which is the honest outcome: it was given what it lacked.
      *
      * The authored deck is prepended when none of the saved decks can be fielded, which is always
      * the case here: a profile owed this pack owns fewer than five playable cards, so no complete
@@ -86,25 +121,31 @@ object StarterPack {
      * holding a full set of named decks loses the last of them — decks it demonstrably cannot
      * play, on the one path that exists to make it playable again.
      *
-     * Unchanged when nothing is authored at all, which [StarterCatalog.violations] refuses at
-     * authoring time. A shipped catalogue with no starter in it is a content bug, and giving
-     * nothing is the honest outcome rather than inventing five ids.
+     * @param starter the box the player chose, and the whole of why this takes one: a new account
+     *   claims *its* starter here and would otherwise be handed the catalogue's first. Null is the
+     *   shop's repair offer, which asks for nothing in particular.
      */
     // ReturnCount: two guards and the result. Both guards say "there is nothing to do", and
     // folding them into one `if` would nest the whole body inside it for no gain.
     @Suppress("ReturnCount")
-    fun grantedTo(save: GameSave, catalog: StarterCatalog): GameSave {
+    fun grantedTo(
+        save: GameSave,
+        catalog: StarterCatalog,
+        cards: Map<Int, Card>,
+        random: Random,
+        starter: Starter? = null,
+    ): GameSave {
         if (!isOwedBy(save)) return save
-        // The first authored starter, and not a released one: [StarterCatalog.released] needs the
-        // card sets to know what is released, and this has no way to be handed them. A profile owed
-        // this pack owns almost nothing, so there is no set of its own to prefer either — and there
-        // is no `MODE` left to ask. Repairing with the first box is a decision, not a guess.
-        val starter = catalog.starters.firstOrNull() ?: return save
-        val granted = starter.cards.fold(save) { profile, id ->
+        // The first authored starter when the caller named none, and not a released one:
+        // [StarterCatalog.released] needs the card sets to know what is released, and this has no
+        // way to be handed them. A profile owed this pack owns almost nothing, so there is no set
+        // of its own to prefer either. Repairing with the first box is a decision, not a guess.
+        val box = starter ?: catalog.starters.firstOrNull() ?: return save
+        val granted = contentsOf(box, cards, random).fold(save) { profile, id ->
             if (profile.ownsCard(id)) profile else profile.withCard(id)
         }
         return granted.copy(
-            decks = (listOf(Deck(GameSave.DEFAULT_DECK_NAME, starter.deck)) + granted.decks)
+            decks = (listOf(Deck(GameSave.DEFAULT_DECK_NAME, box.deck)) + granted.decks)
                 .take(GameSave.MAX_DECKS),
         )
     }

@@ -192,11 +192,23 @@ data class SellCardRequest(
 ) : Idempotent
 
 /**
- * Claiming the box a profile is owed.
+ * Claiming the box a profile is owed — and, for a new character, saying **which** box.
  *
- * No payload beyond the id. Whether anything is owed is `StarterPack.isOwedBy`'s answer and not the
- * client's, and which box it is comes from the server's own catalogue — a client that could name
- * the pack could name a better one.
+ * Whether anything is owed is `StarterPack.isOwedBy`'s answer and not the client's, and what is in
+ * the box comes from the server's own catalogue: [starterId] names one of *its* starters, and a
+ * name it does not know is a name it ignores. A client that could send card ids could send better
+ * ones; a client that can send `"ff8-monsters"` can only pick from what is authored.
+ *
+ * ### Why the id had to be here
+ *
+ * Because until it was, the choice never left the client. The starter screen applied the box to its
+ * own copy of the profile and pushed it with `PUT /me/save`; `GameSave.withServerOwnedFrom` takes
+ * `cards` from the stored document, so the server kept what registration had made and discarded
+ * what the player chose. Choosing FFVIII and being dealt FFXIV is what that looked like from the
+ * outside, and no error was reported because nothing had failed.
+ *
+ * Null still means what it always meant: *the box I am owed*, whichever that is. That is the shop's
+ * repair offer, which is not a choice and should not have to invent one.
  *
  * ### Why a repair needs an endpoint at all
  *
@@ -205,9 +217,15 @@ data class SellCardRequest(
  * last one, and until it moved, closing `cards` would have meant a profile that sold everything
  * could no longer repair itself — silently, since the write would simply be discarded. A forgery
  * left open is bad; a repair that quietly does nothing is worse.
+ *
+ * @property starterId `Starter.id`, or null to be given whichever box the server offers. Optional
+ *   so that a client built before the choice moved server-side still parses here.
  */
 @Serializable
-data class ClaimStarterRequest(override val operationId: String) : Idempotent
+data class ClaimStarterRequest(
+    override val operationId: String,
+    val starterId: String? = null,
+) : Idempotent
 
 /**
  * Paying to enter a campaign ladder.

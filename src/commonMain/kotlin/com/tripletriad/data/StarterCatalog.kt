@@ -15,14 +15,21 @@ import kotlinx.serialization.json.Json
  *
  * ### The composition is a rule, not a per-starter decision
  *
- * **Ten cards: nine of rarity 1 and one of rarity 2, and the rare one is in the deck.** Written
- * down and enforced ([StarterCatalog.violations]) because it is what keeps every set's starter
- * worth the same: a player choosing between three starters is choosing a flavour, not a power
- * level. The moment one set ships two rarity-2s the choice collapses into "take the strongest".
+ * **Nine cards: the authored five that fill the first deck, and four more drawn from the set's
+ * commons.** Written down and enforced ([StarterCatalog.violations]) because it is what keeps every
+ * set's starter worth the same: a player choosing between two starters is choosing a flavour, not a
+ * power level. The moment one set ships two rarity-2s in its deck the choice collapses into "take
+ * the strongest".
  *
- * The rare belongs in the five-card deck because it is the card the starter is *about*, and a first
- * deck that left it in the collection would be one the player has to discover and fix without being
- * told there was anything to fix.
+ * Only the five are authored. The four are [StarterPack.drawn] — commons of the same block, one
+ * copy each, never a duplicate of the five — so two players who opened the same box do not own the
+ * same collection, and the deck they were both handed is still the same deck. They are **drawn
+ * where the grant happens**: on the server for an account, in the client for a local profile, the
+ * same way a booster is rolled by whoever owns the profile it lands in.
+ *
+ * A rarity-2 in the authored five, because it is the card the starter is *about*, and a first deck
+ * that left it in the collection would be one the player has to discover and fix without being told
+ * there was anything to fix. Nothing above rarity 2 at all: a starter is a starting point.
  *
  * ### Choosing a starter is not choosing a side
  *
@@ -34,18 +41,17 @@ import kotlinx.serialization.json.Json
  *
  * @property id the key the client sends and the server resolves. Never the cards: under document 19
  *   the grant is the server's, exactly as it refuses to take the client's word for what a card is
- *   worth when replaying a match.
+ *   worth when replaying a match. The `starterId` on `ClaimStarterRequest` is this.
  * @property block the set it opens. What makes "offer the starters of released sets" fall out for
- *   free — the released flag is [CardSet.released] and there is no second one to keep in step.
- * @property cards what the character owns on its first frame.
- * @property deck the five of them that fill its first deck slot.
+ *   free — the released flag is [CardSet.released] and there is no second one to keep in step. It
+ *   is also the pool the four drawn cards come out of.
+ * @property deck the authored five: the character's first deck, and five of the nine it owns.
  */
 @Serializable
 data class Starter(
     val id: String,
     val block: Int,
     val nameKey: String,
-    val cards: List<Int>,
     val deck: List<Int>,
 )
 
@@ -73,10 +79,10 @@ data class StarterCatalog(val starters: List<Starter>) {
     /**
      * Everything wrong with this catalogue, as sentences, or empty when it is sound.
      *
-     * The five ways a starter can be wrong. They are content bugs, and every one
-     * of them reaches a player as something worse than an error message — a starter of the wrong
-     * size is a character that begins stronger or weaker than every other, and a released set with
-     * no starter is a set nobody can begin with.
+     * The ways a starter can be wrong. They are content bugs, and every one of them reaches a
+     * player as something worse than an error message — a starter whose block cannot fill the draw
+     * is a character that begins with fewer cards than every other, and a released set with no
+     * starter is a set nobody can begin with.
      *
      * A list rather than a throw: an authoring pass wants to see all of it at once, and the one
      * caller is a test. Returning the problems also means the *rule* is stated once, here, rather
@@ -87,19 +93,18 @@ data class StarterCatalog(val starters: List<Starter>) {
      */
     fun violations(cards: CardCatalog, sets: List<CardSet>): List<String> = buildList {
         for (starter in starters) {
-            val resolved = starter.cards.map { it to cards[it] }
+            val resolved = starter.deck.map { it to cards[it] }
             val missing = resolved.filter { it.second == null }.map { it.first }
             if (missing.isNotEmpty()) {
                 add("${starter.id} names cards that do not exist: $missing")
                 // Nothing below can be judged without them, so this starter stops here.
                 continue
             }
-            val held = resolved.mapNotNull { it.second }
-            addAll(starter.compositionProblems(held))
+            addAll(starter.compositionProblems(resolved.mapNotNull { it.second }, cards))
         }
 
         // A *set* needs a starter, not each of its blocks: a set spanning two blocks is one
-        // collection to the player and opens with one box, whose ten cards all sit in whichever
+        // collection to the player and opens with one box, whose cards all sit in whichever
         // block holds the set's commons.
         val opened = starters.mapTo(mutableSetOf()) { it.block }
         for (set in sets.filter { it.released }) {
@@ -109,33 +114,37 @@ data class StarterCatalog(val starters: List<Starter>) {
         }
     }
 
-    /** What is wrong with one starter's ten cards and five-card deck. */
-    private fun Starter.compositionProblems(held: List<Card>): List<String> = buildList {
-        val foreign = held.filter { it.block != block }.map { it.id }
-        if (foreign.isNotEmpty()) add("$id holds cards from another block: $foreign")
+    /** What is wrong with one starter's authored five, and with the block behind them. */
+    private fun Starter.compositionProblems(held: List<Card>, cards: CardCatalog): List<String> =
+        buildList {
+            val foreign = held.filter { it.block != block }.map { it.id }
+            if (foreign.isNotEmpty()) add("$id holds cards from another block: $foreign")
 
-        val commons = held.count { it.rarity == COMMON_RARITY }
-        val rares = held.filter { it.rarity == RARE_RARITY }
-        if (held.size != SIZE || commons != COMMONS || rares.size != RARES) {
-            add(
-                "$id must be $COMMONS rarity-$COMMON_RARITY cards and $RARES " +
-                    "rarity-$RARE_RARITY, was ${held.size} cards " +
-                    "($commons and ${rares.size})",
-            )
-        }
+            if (held.size != HAND_SIZE) add("$id has a deck of ${held.size}, not $HAND_SIZE")
+            if (deck.size != deck.toSet().size) add("$id names a card twice: $deck")
 
-        if (!cards.containsAll(deck)) add("$id has a deck that is not a subset of its cards")
-        if (deck.size != HAND_SIZE) add("$id has a deck of ${deck.size}, not $HAND_SIZE")
-        if (rares.isNotEmpty() && rares.none { it.id in deck }) {
-            add("$id leaves its rare card out of its deck")
+            val overRare = held.filter { it.rarity > RARE_RARITY }.map { it.id }
+            if (overRare.isNotEmpty()) {
+                add("$id holds cards above rarity $RARE_RARITY: $overRare")
+            }
+            if (held.none { it.rarity == RARE_RARITY }) {
+                add("$id has no rarity-$RARE_RARITY card in its deck")
+            }
+
+            // The draw is not authored, so this is the only place its feasibility can be stated:
+            // a block with three spare commons deals an eight-card box and nothing says so.
+            val pool = StarterPack.pool(this@compositionProblems, cards.byId)
+            if (pool.size < StarterPack.DRAWN) {
+                add(
+                    "$id draws ${StarterPack.DRAWN} from block $block, which has only " +
+                        "${pool.size} rarity-$COMMON_RARITY cards outside its deck",
+                )
+            }
         }
-    }
 
     companion object {
-        /** Ten cards, and the split that makes every set's starter worth the same. */
-        const val SIZE: Int = 10
-        const val COMMONS: Int = 9
-        const val RARES: Int = 1
+        /** Nine cards: [Starter.deck] plus [StarterPack.DRAWN]. See this file's KDoc. */
+        const val SIZE: Int = HAND_SIZE + StarterPack.DRAWN
         const val COMMON_RARITY: Int = 1
         const val RARE_RARITY: Int = 2
     }
@@ -146,9 +155,7 @@ data class StarterCatalog(val starters: List<Starter>) {
  *
  * Split from the loader for the reason [CardCatalogParser] is: this module must stay free of any
  * way to *obtain* the text. Document 19 asks for both ends to read starters "from the same parser",
- * which they will — this type is pure Kotlin and moves to `:core` verbatim the day the server needs
- * it. It is here rather than there today only because `:core` is a published artifact of another
- * repository, and adding to it costs a release the client would then have to wait for.
+ * and they do — the client from its Compose resources, the server from its classpath.
  */
 object StarterCatalogParser {
     private val json = Json { ignoreUnknownKeys = true }
