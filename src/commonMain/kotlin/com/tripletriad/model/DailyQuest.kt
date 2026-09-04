@@ -195,12 +195,22 @@ object DailyQuestCatalog {
      */
     val all: List<DailyQuest> = listOf(
         quest("q-play-3", "APP_QUEST_PLAY_3", Objective.MatchesPlayed(3), mgp = 150),
+        quest("q-play-5", "APP_QUEST_PLAY_5", Objective.MatchesPlayed(5), mgp = 220),
         quest("q-win-1", "APP_QUEST_WIN_1", Objective.MatchesWon(1), mgp = 150),
         quest("q-win-3", "APP_QUEST_WIN_3", Objective.MatchesWon(3), mgp = 250),
+        quest("q-win-5", "APP_QUEST_WIN_5", Objective.MatchesWon(5), mgp = 400),
         quest("q-beat-tt-master", "APP_QUEST_BEAT", Objective.BeatOpponent(TT_MASTER), mgp = 200),
+        quest("q-beat-jonas", "APP_QUEST_BEAT", Objective.BeatOpponent("jonas"), mgp = 200),
+        quest("q-beat-maisenta", "APP_QUEST_BEAT", Objective.BeatOpponent("maisenta"), mgp = 200),
         quest("q-rule-same", "APP_QUEST_RULE", Objective.WinWithRule("RULE_SAME"), mgp = 200),
         quest("q-rule-plus", "APP_QUEST_RULE", Objective.WinWithRule("RULE_PLUS"), mgp = 200),
         quest("q-rule-open", "APP_QUEST_RULE", Objective.WinWithRule("RULE_ALL_OPEN"), mgp = 150),
+        quest("q-rule-three-open", "APP_QUEST_RULE", Objective.WinWithRule(THREE_OPEN), mgp = 150),
+        quest("q-rule-swap", "APP_QUEST_RULE", Objective.WinWithRule("RULE_SWAP"), mgp = 200),
+        quest("q-rule-chaos", "APP_QUEST_RULE", Objective.WinWithRule("RULE_CHAOS"), mgp = 200),
+        quest("q-rule-ascension", "APP_QUEST_RULE", Objective.WinWithRule(ASCENSION), mgp = 200),
+        quest("q-rule-fallen-ace", "APP_QUEST_RULE", Objective.WinWithRule(FALLEN_ACE), mgp = 220),
+        quest("q-rule-elemental", "APP_QUEST_RULE", Objective.WinWithRule(ELEMENTAL), mgp = 220),
         quest("q-pvp-1", "APP_QUEST_PVP_1", Objective.PlayPvpMatch, mgp = 250),
     )
 
@@ -257,6 +267,24 @@ object DailyQuestCatalog {
 
     /** `tt-master` is the first opponent of the FFXIV table and is available at every hour. */
     private const val TT_MASTER = "tt-master"
+
+    /*
+     * The rules a day's draw may ask for, and why these and not the other seven.
+     *
+     * A quest is only a quest if it can be finished today. Which rules are on offer is a property
+     * of `npcs.json` — an opponent brings their own list — so a "win with Order" drawn on a roster
+     * where five opponents in a hundred and fifty-eight play it is a quest that expires unmet more
+     * often than not. Counted over the shipped roster, these are the rules at least a dozen
+     * opponents bring: Plus 57, Same 43, Three Open 22, Swap 19, Chaos 18, All Open 15,
+     * Ascension 12, Fallen Ace 11, Elemental 11. Roulette can still produce any of them, which is
+     * what keeps the thin end reachable at all rather than what makes it worth asking for.
+     *
+     * Named as constants only where the literal is long enough to wrap the call.
+     */
+    private const val THREE_OPEN = "RULE_THREE_OPEN"
+    private const val ASCENSION = "RULE_ASCENSION"
+    private const val FALLEN_ACE = "RULE_FALLEN_ACE"
+    private const val ELEMENTAL = "RULE_ELEMENTAL"
 
     /** The same numeric FFXIV icon the Triple Team achievements use. */
     private const val QUEST_ICON = "000713"

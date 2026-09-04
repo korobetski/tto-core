@@ -4,9 +4,13 @@ package com.tripletriad.model
  * The lowest power a card can *show* once modifiers apply.
  *
  * Card data is 1..10 ([Card.POWER_RANGE]) but effective power is **0..10**: the AS3
- * clamp is `Math.min(10, Math.max(0, value))` (`tools.as:74-76`), Fallen Ace
- * produces 0 directly, and the Elemental penalty can drive a 1 down to 0. Confusing
- * the two ranges is the easiest way to get this wrong.
+ * clamp is `Math.min(10, Math.max(0, value))` (`tools.as:74-76`) and the Elemental
+ * penalty can drive a 1 down to 0. Confusing the two ranges is the easiest way to get
+ * this wrong.
+ *
+ * Fallen Ace used to be the other way of reaching 0 and no longer is: it decides a
+ * *comparison* rather than a value — see `RulesEngine.outranks` — so an ace under it
+ * still shows the 10 that is printed on it.
  *
  * Ascension and Descension are the exception and stop at [MIN_MODIFIED_POWER]; see there.
  */
@@ -18,7 +22,7 @@ const val MIN_EFFECTIVE_POWER: Int = 0
  * ### Why these two rules floor higher than everything else
  *
  * They are the only *cumulative* modifiers in the game. Elemental is a single ±1 decided by the
- * cell, and Fallen Ace is a single substitution; neither can run away. A Descension tally has no
+ * cell and cannot run away. A Descension tally has no
  * bound at all — nine cards of one type on the board is −9 — so without a floor above zero the
  * rule stops being a penalty and becomes an eraser: every card of that type reads 0 on all four
  * sides, they all tie with each other, and the match is decided by whoever placed last.
@@ -26,9 +30,13 @@ const val MIN_EFFECTIVE_POWER: Int = 0
  * So the pair is stated as a range rather than as two clamps: **a card accumulates bonuses up to
  * [ACE_POWER] and maluses down to 1**, and stays a card at both ends.
  *
- * A card already *below* 1 when the tally is applied — only Fallen Ace does that — is not lifted
- * to 1 by a penalty. See [effectivePower], where the floor is `min(base, 1)` for exactly that
- * reason: a modifier may not move a card in the direction opposite to its own sign.
+ * A card already *below* 1 when the tally is applied is not lifted to 1 by a penalty. See
+ * [effectivePower], where the floor is `min(base, 1)` for exactly that reason: a modifier may not
+ * move a card in the direction opposite to its own sign. Nothing reaches this function below 1 any
+ * more — Fallen Ace was the only producer of a 0 base and no longer changes a value at all — so the
+ * guard is now a property the clamp keeps rather than a case it meets. It is kept because the
+ * guarantee is what is being stated, and the day a rule does hand this a 0 the floor is already
+ * right.
  */
 const val MIN_MODIFIED_POWER: Int = 1
 
@@ -148,19 +156,25 @@ fun powerModifier(
  * Order of operations is taken from `TTOCore.applyRules:27-56` and matters:
  *
  * 1. start from the printed power;
- * 2. Fallen Ace turns a 10 into 0 — **before** any modifier, so an ace on a +1
- *    Ascension board reads 1, not 0;
- * 3. add the single active [TypeRule] modifier ([powerModifier]);
- * 4. clamp — to 0..10 in general, and to 1..10 under the two cumulative rules
+ * 2. add the single active [TypeRule] modifier ([powerModifier]);
+ * 3. clamp — to 0..10 in general, and to 1..10 under the two cumulative rules
  *    ([MIN_MODIFIED_POWER]).
+ *
+ * ### Fallen Ace is not a step here, and used to be
+ *
+ * It sat at the top of this list, turning a printed 10 into a 0 before any modifier ran. That
+ * reading makes the ace worthless against every digit; the rule FFXIV states makes it lose to a 1
+ * and to nothing else. A value the whole engine reads could not express that, so it moved to the
+ * one place a capture is decided — `RulesEngine.outranks` — and this function went back to being
+ * about what a card *shows*.
  *
  * ### The floor is `min(base, 1)` and not `1`
  *
- * Because a floor is meant to stop a penalty, not to become a bonus. Fallen Ace hands this
- * function a base of 0; a flat floor of 1 would mean a Malus board *raised* a fallen ace, which is
- * two rules cancelling out through a clamp neither of them wrote. Taking the lower of the base and
- * the floor keeps the guarantee — a modifier never drags a card below 1 — without letting it drag
- * one upward either.
+ * Because a floor is meant to stop a penalty, not to become a bonus. A flat floor of 1 would mean
+ * a Malus board *raised* a card that some future rule had put below it, which is two rules
+ * cancelling out through a clamp neither of them wrote. Taking the lower of the base and the floor
+ * keeps the guarantee — a modifier never drags a card below 1 — without letting it drag one
+ * upward either.
  *
  * Unlike the original, this is a pure function rather than mutable state on a
  * display object. That removes the three-independent-writers hazard described in
@@ -173,8 +187,7 @@ fun effectivePower(
     element: CardType? = null,
     tally: AscensionTally = AscensionTally.EMPTY,
 ): Int {
-    val printed = card.power(side)
-    val base = if (rules.fallenAce && printed == ACE_POWER) MIN_EFFECTIVE_POWER else printed
+    val base = card.power(side)
     val modifier = powerModifier(card, rules, element, tally)
     return (base + modifier).coerceIn(floorFor(rules.typeRule, base), ACE_POWER)
 }

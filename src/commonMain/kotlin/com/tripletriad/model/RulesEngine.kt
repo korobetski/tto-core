@@ -210,8 +210,45 @@ class RulesEngine(
             neighbour.occupant.card,
             neighbour.side.facing(),
         )
-        return if (rules.reverse) defence > attack else defence < attack
+        return outranks(attack, defence)
     }
+
+    /**
+     * Whether [attack] takes [defence] — the whole of who captures whom, in one place.
+     *
+     * ### Fallen Ace is a comparison, not a value
+     *
+     * It used to be a substitution: `effectivePower` turned a printed A into a 0 and the ordinary
+     * comparison did the rest. That is not the rule FFXIV states, and the two part company on every
+     * digit between them. The rule is **"a card with a value of A can be captured by a card with a
+     * value of 1"** — the ace keeps its 10 against a 9, against a Same, against a Plus and against
+     * the wall, and loses only to the one number that could never touch it otherwise.
+     *
+     * So the pair `{1, A}` is the single case where the comparison runs backwards, and everything
+     * else is untouched. Reverse then falls out rather than needing a rule of its own: under
+     * Reverse the ordinary answer is already inverted, inverting it again puts the ace back on top,
+     * and A captures 1 while beating nothing else — which is exactly what the rule says the
+     * combination does.
+     *
+     * ### On the numbers in play, not the numbers printed
+     *
+     * [attack] and [defence] arrive already modified by Elemental and by Ascension or Descension,
+     * and the pair is tested on those. A 2 standing on a cell that penalises it is a 1 on the board
+     * and a 1 to this rule; a printed 1 pushed to 0 is not. The alternative — testing the printed
+     * faces — would have the board show `1` against `A` and refuse the capture, which is a rule
+     * nobody could learn from watching it. `SpecialPowerBasis` exists because Same and Plus make
+     * the opposite choice, and it is a choice each rule gets to make.
+     */
+    private fun outranks(attack: Int, defence: Int): Boolean {
+        val ordinary = if (rules.reverse) defence > attack else defence < attack
+        val fallen = rules.fallenAce && isAceAgainstOne(attack, defence)
+        return if (fallen) !ordinary else ordinary
+    }
+
+    /** The one pair Fallen Ace speaks about, in either direction. */
+    private fun isAceAgainstOne(attack: Int, defence: Int): Boolean =
+        (attack == FALLEN_ACE_LOW && defence == ACE_POWER) ||
+            (attack == ACE_POWER && defence == FALLEN_ACE_LOW)
 
     /**
      * `TTOCore.specialRule` (`:211-306`). Performs the basic comparison itself, then
@@ -377,8 +414,10 @@ class RulesEngine(
             if (target.owner == context.player) return@mapNotNull null
             val attack = context.effective(from, attacker.card, side)
             val defence = context.effective(at, target.card, side.facing())
-            val wins = if (rules.reverse) defence > attack else defence < attack
-            if (wins) at else null
+            // The same comparison a direct capture uses, and it has to be: a Combo is an ordinary
+            // capture that happens to be made by a card somebody else just flipped, so a rule that
+            // decided direct captures and not chained ones would be two rules wearing one name.
+            if (outranks(attack, defence)) at else null
         }
     }
 
@@ -391,5 +430,8 @@ class RulesEngine(
     private companion object {
         /** Same and Plus both need two matching neighbours. */
         const val PAIR = 2
+
+        /** The number Fallen Ace hands the ace to. */
+        const val FALLEN_ACE_LOW = 1
     }
 }

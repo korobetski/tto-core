@@ -304,6 +304,30 @@ data class AppVersion(
  * 4.0.0 has not shipped, so its contents are still open. Against the last version anybody ran this
  * build already refuses.
  *
+ * ### 6.0.0 — Fallen Ace is a comparison, not a value
+ *
+ * One change to what the rules engine computes, and the third bump earned on the first ground —
+ * the same ground as 3.0.0, and stated the same way: **no message changes shape at all**, and a
+ * transcript from a 5.x build replays to a different set of captures here.
+ *
+ * The rule used to substitute a 0 for a printed A before any modifier ran, which made an ace lose
+ * to every digit on the board. FFXIV's rule is narrower and sharper: an ace can be captured by a 1,
+ * it holds its 10 against everything else, and under Reverse the pair turns over so the ace takes
+ * the 1 and nothing else. So the substitution is gone and `RulesEngine.outranks` decides the one
+ * pair instead — see [com.tripletriad.model.effectivePower], which went back to being about what a
+ * card shows.
+ *
+ * **The blast radius is wider than the rule.** Because the old reading changed a *value*, it
+ * changed every rule that reads one: an ace next to a wall stopped triggering Same Wall, and a
+ * Malus board could not take an ace below the 0 it was already at. Both of those are now what they
+ * would have been with the rule off, and both move a replay.
+ *
+ * A minor could not carry this, for the reason 3.0.0 gives: a minor promises the replay is
+ * unchanged, and against a 5.x peer that promise is false. [TRANSCRIPT_VERSION] moves to 6 with it,
+ * and `ReplayDeterminismTest`'s goldens pass untouched for the same reason they did across 3.0.0 —
+ * its recorded match is played with no rules at all, so no ace ever meets a 1 under a rule that is
+ * not in force.
+ *
  * ### 5.0.0 — the environment opponent stops moving before it is watched
  *
  * A major earned on neither of the two usual grounds. **No type on the wire changes**: not a
@@ -328,7 +352,7 @@ data class AppVersion(
  * without a version at all — and no rule the engine evaluates is touched here. Deciding it a
  * second later changes when a row is written, not what any row replays to.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(5, 0, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(6, 0, 0)
 
 /**
  * The header both sides put the version in.

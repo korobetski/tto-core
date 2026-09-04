@@ -120,13 +120,28 @@ class MatchAiTest {
         )
     }
 
-    /** Cover reads the *effective* powers, which is why the AS3 computes it after `applyRules`. */
+    /**
+     * Cover reads the *effective* powers, which is why the AS3 computes it after `applyRules`.
+     *
+     * Shown with Malus rather than with Fallen Ace, which is what this used to use: Fallen Ace no
+     * longer touches a value at all — it decides a comparison — so an ace under it covers exactly
+     * as well as an ace, and the assertion would have passed whether or not cover applied the
+     * rules. Malus is a modifier that really moves the number.
+     */
     @Test
     fun coverUsesEffectivePowersNotPrinted() {
-        val ace = card(top = 10, right = 10, bottom = 10, left = 10)
-        val fallen = state(listOf(ace), rules = GameRules(fallenAce = true))
+        val beast = card(top = 6, right = 6, bottom = 6, left = 6).copy(type = CardType.BEAST)
+        val cursed = state(listOf(beast), rules = GameRules(typeRule = TypeRule.DESCENSION))
+            .copy(tally = AscensionTally(mapOf(CardType.BEAST to -2)))
 
-        assertEquals(0, ai().cover(fallen, ace, At.CENTRE), "Fallen Ace makes every edge a 0")
+        // −2 on the board and −1 for the card counting itself, which `cover` does on purpose: it
+        // is valuing a placement that has not happened, so it asks what the card would be worth
+        // *once placed*. Six becomes three on all four open flanks.
+        assertEquals(
+            4 * 3,
+            ai().cover(cursed, beast, At.CENTRE),
+            "a −2 tally and the card's own −1 take every edge from 6 to 3",
+        )
     }
 
     @Test

@@ -225,5 +225,17 @@ enum class RejectionReason {
  * transcript whose shuffle led with two five-stars replays to a different hand. The shuffle itself
  * is unchanged and consumes the generator identically, which is why every other Random transcript
  * — and every non-Random one — replays exactly as it did.
+ *
+ * **6** — Fallen Ace stopped being a value and became a comparison, which is the rule FFXIV
+ * actually states: an ace can be captured by a 1 and holds its 10 against everything else, and
+ * under Reverse the pair flips so the ace takes the 1 and nothing else. It used to substitute a 0
+ * for the printed 10 before any modifier ran, which made an ace worthless against every digit and
+ * also silently changed Same Wall, Bonus and Malus wherever an ace was on the board.
+ *
+ * The engine alone for the third time, and the widest of the three: **every stored transcript of a
+ * match played with `RULE_FALLEN_ACE` replays to a different set of captures**, and so does any
+ * match where an ace stood next to a wall under Same Wall. Same cost, same bound — a queued
+ * transcript from a 5 build is refused by [TranscriptVerifier] rather than mis-credited. Matches
+ * played without the rule are untouched: `outranks` is the ordinary comparison with the flag off.
  */
-const val TRANSCRIPT_VERSION: Int = 5
+const val TRANSCRIPT_VERSION: Int = 6

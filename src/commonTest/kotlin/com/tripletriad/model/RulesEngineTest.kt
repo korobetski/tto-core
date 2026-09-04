@@ -147,51 +147,177 @@ class RulesEngineTest {
 
     // ---- 7-9: Fallen Ace -------------------------------------------------
 
+    /**
+     * The rule, stated as FFXIV states it: **an ace can be captured by a 1**.
+     *
+     * The 1 attacks upward into the ace's bottom edge. Without the rule this is 1 against 10 and
+     * nothing happens, which is the half the next case pins.
+     */
     @Test
-    fun fallenAceTurnsTenIntoZeroAndLosesToOne() {
+    fun aOneTakesAnAce() {
         val ace = card(id = 1, top = ACE_POWER, right = ACE_POWER, bottom = ACE_POWER, left = 1)
         val start = board(Triple(At.CENTRE, ace, CardColor.RED))
-        // A 1 on the left edge attacks the ace's left side... which is also 1. Use top instead:
-        // place at BOTTOM_MID attacking centre's bottom (an ace -> 0) with a 1.
-        val result = engine(GameRules(fallenAce = true))
-            .resolve(start, At.BOTTOM_MID, card(id = 2, top = 1), CardColor.BLUE)
+        val one = card(id = 2, top = 1)
 
-        assertEquals(listOf(At.CENTRE), result.capturedPositions)
+        assertEquals(
+            emptyList(),
+            engine().resolve(start, At.BOTTOM_MID, one, CardColor.BLUE).capturedPositions,
+            "without the rule a 1 is simply a 1",
+        )
+        assertEquals(
+            listOf(At.CENTRE),
+            engine(GameRules(fallenAce = true))
+                .resolve(start, At.BOTTOM_MID, one, CardColor.BLUE).capturedPositions,
+        )
     }
 
+    /**
+     * And the ace keeps everything else.
+     *
+     * This is the case the old reading got wrong. Substituting a 0 for the printed 10 made the ace
+     * lose to *every* digit; the rule hands it to the 1 and to nothing else.
+     */
     @Test
-    fun fallenAcePlusAscensionReadsOneNotZero() {
+    fun anAceStillBeatsEveryDigitButTheOne() {
+        val rules = GameRules(fallenAce = true)
+        for (defence in 2..ACE_POWER) {
+            val target = card(id = 1, bottom = defence)
+            val start = board(Triple(At.CENTRE, target, CardColor.RED))
+            val ace = card(id = 2, top = ACE_POWER)
+
+            val captured = engine(rules)
+                .resolve(start, At.BOTTOM_MID, ace, CardColor.BLUE).capturedPositions
+            assertEquals(
+                if (defence < ACE_POWER) listOf(At.CENTRE) else emptyList(),
+                captured,
+                "an ace against a $defence",
+            )
+        }
+    }
+
+    /** The pair runs both ways: the ace that loses to a 1 does not take one either. */
+    @Test
+    fun anAceDoesNotTakeAOne() {
+        val one = card(id = 1, bottom = 1)
+        val start = board(Triple(At.CENTRE, one, CardColor.RED))
+        val ace = card(id = 2, top = ACE_POWER)
+
+        assertEquals(
+            listOf(At.CENTRE),
+            engine().resolve(start, At.BOTTOM_MID, ace, CardColor.BLUE).capturedPositions,
+            "without the rule an ace takes a 1 like anything else",
+        )
+        assertEquals(
+            emptyList(),
+            engine(GameRules(fallenAce = true))
+                .resolve(start, At.BOTTOM_MID, ace, CardColor.BLUE).capturedPositions,
+        )
+    }
+
+    /**
+     * Under Reverse the pair flips again, and the ace can take a 1 — and only a 1.
+     *
+     * Reverse alone makes an ace worthless: nothing on a card is above 10, so it can never be the
+     * lower number. Fallen Ace on top of it gives it exactly one victim back. Both halves are here
+     * because the interesting claim is the *only*.
+     */
+    @Test
+    fun underReverseTheAceTakesTheOneAndNothingElse() {
+        val rules = GameRules(reverse = true, fallenAce = true)
+        for (defence in 1..ACE_POWER) {
+            val target = card(id = 1, bottom = defence)
+            val start = board(Triple(At.CENTRE, target, CardColor.RED))
+            val ace = card(id = 2, top = ACE_POWER)
+
+            val captured = engine(rules)
+                .resolve(start, At.BOTTOM_MID, ace, CardColor.BLUE).capturedPositions
+            assertEquals(
+                if (defence == 1) listOf(At.CENTRE) else emptyList(),
+                captured,
+                "under Reverse, an ace against a $defence",
+            )
+        }
+    }
+
+    /** And the 1 gives its victim back: under Reverse it no longer takes the ace. */
+    @Test
+    fun underReverseTheOneNoLongerTakesTheAce() {
+        val ace = card(id = 1, bottom = ACE_POWER)
+        val start = board(Triple(At.CENTRE, ace, CardColor.RED))
+        val one = card(id = 2, top = 1)
+
+        assertEquals(
+            listOf(At.CENTRE),
+            engine(GameRules(reverse = true))
+                .resolve(start, At.BOTTOM_MID, one, CardColor.BLUE).capturedPositions,
+            "Reverse alone: 1 is lower than 10, so it takes the ace",
+        )
+        assertEquals(
+            emptyList(),
+            engine(GameRules(reverse = true, fallenAce = true))
+                .resolve(start, At.BOTTOM_MID, one, CardColor.BLUE).capturedPositions,
+        )
+    }
+
+    /**
+     * The pair is read off the numbers *in play*, not the numbers printed.
+     *
+     * A 2 standing on a cell that penalises it shows a 1, and the board would be showing `1`
+     * against `A` while refusing the capture if this went by the printed face. `SpecialPowerBasis`
+     * exists because Same and Plus answer this differently; each rule gets to choose, and this one
+     * chooses what the player can see.
+     */
+    @Test
+    fun theRuleReadsTheModifiedNumbersAndNotThePrintedOnes() {
+        val ace = card(id = 1, bottom = ACE_POWER).copy(type = CardType.FIRE)
+        // Not fire, so the cell docks it: a printed 2 attacks as a 1.
+        val two = card(id = 2, top = 2).copy(type = CardType.ICE)
+        val elements = List(Board.SIZE) { if (it == At.BOTTOM_MID) CardType.FIRE else null }
+        val start = Board(elements = elements).place(At.CENTRE, ace, CardColor.RED)
+
+        assertEquals(
+            listOf(At.CENTRE),
+            engine(GameRules(fallenAce = true, typeRule = TypeRule.ELEMENTAL))
+                .resolve(start, At.BOTTOM_MID, two, CardColor.BLUE).capturedPositions,
+        )
+    }
+
+    /** Ascension no longer meets a zeroed ace, because there is no longer such a thing. */
+    @Test
+    fun fallenAceLeavesAnAceAtTenWhateverElseIsInForce() {
         val ace = card(id = 1, bottom = ACE_POWER).copy(type = CardType.BEAST)
         val rules = GameRules(fallenAce = true, typeRule = TypeRule.ASCENSION)
         val tally = AscensionTally(mapOf(CardType.BEAST to 1))
 
         assertEquals(
-            1,
+            ACE_POWER,
             effectivePower(ace, Side.BOTTOM, rules, tally = tally),
-            "Fallen Ace zeroes the 10 first, then Ascension adds 1",
+            "the rule decides a comparison; it does not move a value",
         )
     }
 
+    /**
+     * And Same Wall keeps its ace, which the old reading quietly took away.
+     *
+     * The substitution made an ace read 0 to *every* rule that looks at a number, so a board with
+     * Fallen Ace and Same Wall both up stopped firing the wall — an interaction neither rule
+     * states and nobody asked for.
+     */
     @Test
-    fun fallenAceDisablesSameWallOnThatSide() {
-        // Centre-top wall is not reachable; use TOP_MID: its TOP side faces a wall.
+    fun fallenAceLeavesSameWallAlone() {
         val start = board(Triple(At.TOP_LEFT, card(id = 1, right = 4), CardColor.RED))
         val placed = card(id = 2, top = ACE_POWER, left = 4)
         val rules = GameRules(sameWall = true)
 
-        val without = engine(rules).resolve(start, At.TOP_MID, placed, CardColor.BLUE)
-        assertEquals(
-            CaptureKind.SAME_WALL,
-            without.kindAt(At.TOP_LEFT),
-            "the ace faces the top wall, so Same Wall should fire",
-        )
-
-        val with = engine(rules.copy(fallenAce = true))
-            .resolve(start, At.TOP_MID, placed, CardColor.BLUE)
-        assertFalse(
-            with.captures.any { it.kind == CaptureKind.SAME_WALL },
-            "Fallen Ace turns the ace into 0, so the wall no longer counts",
-        )
+        for (fallen in listOf(false, true)) {
+            val result = engine(rules.copy(fallenAce = fallen))
+                .resolve(start, At.TOP_MID, placed, CardColor.BLUE)
+            assertEquals(
+                CaptureKind.SAME_WALL,
+                result.kindAt(At.TOP_LEFT),
+                "the ace faces the top wall; Fallen Ace $fallen must not change that",
+            )
+        }
     }
 
     // ---- 10-16: Same, Plus, Same Wall ------------------------------------
@@ -492,19 +618,34 @@ class RulesEngineTest {
     }
 
     /**
-     * And that floor is not a *lift*: a fallen ace stays at 0 under a malus.
+     * And that floor is not a *lift*: a modifier may not move a card against its own sign.
      *
      * The case `min(base, 1)` in [effectivePower] exists for. A flat floor of 1 would have Malus
-     * quietly *raising* the one card Fallen Ace had put on the floor — two rules cancelling out
-     * through a clamp that neither of them wrote.
+     * quietly *raising* a card that had been put below it — two rules cancelling out through a
+     * clamp neither of them wrote.
+     *
+     * **Nothing produces a base below 1 any more.** Fallen Ace was the only one, and it stopped
+     * being a value when it became a comparison — see `outranks`. What is asserted here is
+     * therefore the guarantee rather than a case the engine meets today: a heavy Malus takes an
+     * ace to the floor and no further, and the ace it starts from is a 10.
      */
     @Test
-    fun aMalusDoesNotLiftAFallenAceOffZero() {
+    fun aMalusStopsAtTheFloorAndDoesNotReachPastIt() {
         val rules = GameRules(typeRule = TypeRule.DESCENSION, fallenAce = true)
-        val tally = AscensionTally(mapOf(CardType.BEAST to -3))
         val ace = card(top = ACE_POWER).copy(type = CardType.BEAST)
 
-        assertEquals(MIN_EFFECTIVE_POWER, effectivePower(ace, Side.TOP, rules, tally = tally))
+        val malus = { by: Int -> AscensionTally(mapOf(CardType.BEAST to by)) }
+
+        assertEquals(
+            ACE_POWER - 3,
+            effectivePower(ace, Side.TOP, rules, tally = malus(-3)),
+            "Fallen Ace does not pre-empt the malus by zeroing the ace",
+        )
+        assertEquals(
+            MIN_MODIFIED_POWER,
+            effectivePower(ace, Side.TOP, rules, tally = malus(-9)),
+            "and nine of a type does not push it below 1",
+        )
     }
 
     /**
