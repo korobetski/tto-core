@@ -304,6 +304,30 @@ data class AppVersion(
  * 4.0.0 has not shipped, so its contents are still open. Against the last version anybody ran this
  * build already refuses.
  *
+ * ### 6.1.0 — the week's quest
+ *
+ * A minor on the first ground the 1.1.0 entry established for daily quests, and for the same
+ * reason: **the replay is untouched**. `MatchTranscript` is unchanged, so `fingerprint` is
+ * unchanged, and every transcript credited under 6.0.0 credits identically here. Quests are counted
+ * *after* the engine has spoken, never inside it.
+ *
+ * Two additions, both of which a 6.0.0 peer survives untouched, which is the test a minor has to
+ * pass:
+ *
+ * - `GameSave.WEEKLY`, a second [com.tripletriad.model.QuestLog] beside `QUESTS`. An old client
+ *   drops it on the floor (`ignoreUnknownKeys`) and a new one reads a profile without it as an
+ *   empty log that rolls on the first credit. It joins `withServerOwnedFrom` on arrival, which is
+ *   the whole of its security: the week's reward is worth about seven days of dailies and is the
+ *   one quest log worth forging.
+ * - [RewardSummary.weeklyQuestIds] and [PvpOutcome.weeklyQuestIds], both defaulted, so that a
+ *   finished week can be announced on the result panel rather than discovered on the quest screen a
+ *   day later. Two fields because the two modes carry their payouts in two types, which is the same
+ *   reason `questIds` is on both.
+ *
+ * `DailyQuests` became `QuestLog` and its `day` became `period` in the same breath. Neither is on
+ * the wire: every `@SerialName` is untouched — the field is still `DAY` — because a stored profile
+ * should not have to be migrated to rename a Kotlin property.
+ *
  * ### 6.0.0 — Fallen Ace is a comparison, not a value
  *
  * One change to what the rules engine computes, and the third bump earned on the first ground —
@@ -352,7 +376,7 @@ data class AppVersion(
  * without a version at all — and no rule the engine evaluates is touched here. Deciding it a
  * second later changes when a row is written, not what any row replays to.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(6, 0, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(6, 1, 0)
 
 /**
  * The header both sides put the version in.

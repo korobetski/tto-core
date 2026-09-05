@@ -31,7 +31,7 @@ class DailyQuestCatalogTest {
     /** And the PvP quest is one of them, exactly once. */
     @Test
     fun thePvpQuestIsDefinedAndDrawable() {
-        val pvp = DailyQuestCatalog.all.filter { it.objective == Objective.PlayPvpMatch }
+        val pvp = DailyQuestCatalog.all.filter { it.objective is Objective.PlayPvpMatch }
 
         assertEquals(1, pvp.size)
         assertTrue(pvp.single() in DailyQuestCatalog.assignable)

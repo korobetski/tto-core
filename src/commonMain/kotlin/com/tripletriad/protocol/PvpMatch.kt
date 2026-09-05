@@ -330,6 +330,8 @@ data class PvpOutcome(
     val claimDeadline: Long? = null,
     val achievementIds: List<String> = emptyList(),
     val questIds: List<String> = emptyList(),
+    /** The week's quest, if this match finished it — see `RewardSummary.weeklyQuestIds`. */
+    val weeklyQuestIds: List<String> = emptyList(),
 )
 
 /**

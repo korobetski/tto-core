@@ -51,7 +51,7 @@ class DailyQuestRepositoryTest {
         assertEquals(DailyQuestCatalog.PER_DAY, statuses.size)
         assertTrue(statuses.all { it.progress.current == 0 }, "nothing has been played yet")
         assertTrue(statuses.none { it.isCompleted })
-        assertEquals("", save.quests.day, "and reading wrote nothing")
+        assertEquals("", save.quests.period, "and reading wrote nothing")
     }
 
     /** The draw is a function of the day and the character, and of nothing else. */
@@ -71,7 +71,7 @@ class DailyQuestRepositoryTest {
 
         val award = repository.credit(save, event(), DAY_ONE)
 
-        assertEquals(questDayOf(DAY_ONE), award.save.quests.day)
+        assertEquals(questDayOf(DAY_ONE), award.save.quests.period)
         assertContentEquals(
             DailyQuestCatalog.idsForDay(DAY_ONE, 7L),
             award.save.quests.questIds,
@@ -92,7 +92,7 @@ class DailyQuestRepositoryTest {
 
         val today = repository.credit(yesterday, event(), DAY_TWO).save
 
-        assertEquals(questDayOf(DAY_TWO), today.quests.day)
+        assertEquals(questDayOf(DAY_TWO), today.quests.period)
         assertContentEquals(DailyQuestCatalog.idsForDay(DAY_TWO, 7L), today.quests.questIds)
         // Not "completed is empty": the same call rolls the day over **and** credits the match, so
         // a one-match quest drawn today is legitimately finished by the time this returns. What
@@ -223,7 +223,7 @@ class DailyQuestRepositoryTest {
     fun thePvpObjectiveIsDrawnLikeAnyOther() {
         val drawnFor = (1L..500L).count { created ->
             DailyQuestCatalog.forDay(DAY_ONE, created)
-                .any { it.objective == Objective.PlayPvpMatch }
+                .any { it.objective is Objective.PlayPvpMatch }
         }
 
         assertTrue(drawnFor > 0, "the PvP quest was drawn for none of 500 characters")

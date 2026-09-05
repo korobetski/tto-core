@@ -59,7 +59,7 @@ class MatchRewardsTest {
     fun aCreditedMatchAdvancesTheDaysQuests() {
         val credit = credit(MatchResult.WIN)
 
-        assertEquals(questDayOf(AT), credit.save.quests.day, "the day was pinned")
+        assertEquals(questDayOf(AT), credit.save.quests.period, "the day was pinned")
         assertTrue(credit.save.quests.progress.isNotEmpty(), "nothing was counted")
         assertTrue(
             credit.reward.quests.all { it.id in credit.save.quests.completed },

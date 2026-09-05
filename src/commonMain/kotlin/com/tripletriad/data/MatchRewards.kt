@@ -36,6 +36,13 @@ data class MatchReward(
      * match paid" — a caller that wants the total reads it off the quests.
      */
     val quests: List<DailyQuest> = emptyList(),
+    /**
+     * The week's quest, if this match finished it. Separate from [quests] rather than folded in,
+     * because the result panel says something different about it: a day's quest is one of three and
+     * a week's is *the* one, and a panel that listed them together would bury the larger prize
+     * among the smaller ones.
+     */
+    val weeklyQuests: List<DailyQuest> = emptyList(),
     val mgpBoonSpent: Boolean = false,
     val xpBoonSpent: Boolean = false,
     /**
@@ -314,28 +321,27 @@ object MatchRewards {
         for (id in cardsLost) updated = updated.withoutCard(id)
 
         val award = AchievementRepository().credit(updated, at)
-        val quests = DailyQuestRepository().credit(
-            save = award.save,
-            event = MatchEvent(
-                result = result,
-                // No icon, and no sentinel that could collide with one: every `Objective`
-                // that names an opponent names an `Npc.iconId`, and no NPC has an empty one.
-                // So a PvP win advances "win a match" and never "beat tt-master".
-                opponentIconId = "",
-                ruleKeys = rules.activeRuleKeys(),
-                isPvp = true,
-            ),
-            at = at,
+        val event = MatchEvent(
+            result = result,
+            // No icon, and no sentinel that could collide with one: every `Objective`
+            // that names an opponent names an `Npc.iconId`, and no NPC has an empty one.
+            // So a PvP win advances "win a match" and never "beat tt-master".
+            opponentIconId = "",
+            ruleKeys = rules.activeRuleKeys(),
+            isPvp = true,
         )
+        val quests = DailyQuestRepository().credit(save = award.save, event = event, at = at)
+        val weekly = WeeklyQuestRepository().credit(save = quests.save, event = event, at = at)
 
         return MatchCredit(
-            save = quests.save,
+            save = weekly.save,
             reward = MatchReward(
                 result = result,
                 mgp = mgp,
                 xp = xp,
                 achievements = award.earned,
                 quests = quests.completed,
+                weeklyQuests = weekly.completed,
                 mgpBoonSpent = mgpBoon,
                 xpBoonSpent = xpBoon,
                 stakeMgp = stakeMgp,

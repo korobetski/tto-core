@@ -277,6 +277,14 @@ data class RewardSummary(
      * total looks each quest's reward up for itself.
      */
     val questIds: List<String> = emptyList(),
+    /**
+     * The week's quest, if this match finished it — the same reasoning as [questIds], and kept
+     * apart from them for the reason `MatchReward.weeklyQuests` is: a day's quest is one of three
+     * and a week's is *the* one, and a panel that listed both together would bury the larger prize.
+     *
+     * Defaulted, so a server that predates it and a client that does not read the same payload.
+     */
+    val weeklyQuestIds: List<String> = emptyList(),
 )
 
 /**

@@ -276,7 +276,19 @@ data class GameSave(
      * Reset by [com.tripletriad.data.DailyQuestRepository] on the first credit of a new day, and
      * **owned by the server**: [withServerOwnedFrom] is what stops a client asserting its own.
      */
-    @SerialName("QUESTS") val quests: DailyQuests = DailyQuests(),
+    @SerialName("QUESTS") val quests: QuestLog = QuestLog(),
+    /**
+     * The current UTC week's quest and its progress — one, not three. See [WeeklyQuestCatalog].
+     *
+     * The same type and the same rollover as [quests], with a Monday in its `period` instead of a
+     * day; **owned by the server** for the same reason, and for a larger one — a week's reward is
+     * worth about what a week of dailies pays, so a client asserting one would be paying itself
+     * seven times over.
+     *
+     * Absent from a profile written before this field existed, which reads as an empty log and
+     * rolls on the first credit. That is the whole of the migration.
+     */
+    @SerialName("WEEKLY") val weekly: QuestLog = QuestLog(),
     /**
      * Wins per NPC, keyed by the NPC's **`iconID`** — `'jonas'`, `'tt-master'`. `NPC_W`.
      *
@@ -583,7 +595,10 @@ data class GameSave(
         if (hasAchievement(id)) this else copy(achievements = achievements + (id to instant))
 
     /** This profile with [updated] as its daily quests. */
-    fun withQuests(updated: DailyQuests): GameSave = copy(quests = updated)
+    fun withQuests(updated: QuestLog): GameSave = copy(quests = updated)
+
+    /** This profile with [updated] as its weekly quest. */
+    fun withWeeklyQuests(updated: QuestLog): GameSave = copy(weekly = updated)
 
     /** Whether today's [questId] has already paid out. */
     fun hasCompletedQuest(questId: String): Boolean = quests.isCompleted(questId)
@@ -644,6 +659,7 @@ data class GameSave(
      */
     fun withServerOwnedFrom(stored: GameSave): GameSave = copy(
         quests = stored.quests,
+        weekly = stored.weekly,
         achievements = stored.achievements,
         campaignRun = stored.campaignRun,
         campaignWins = stored.campaignWins,

@@ -284,7 +284,7 @@ class PvpRewardsTest {
             .filter { it.objective is Objective.BeatOpponent }
 
         assertTrue(beaten.isEmpty(), "a PvP win completed $beaten")
-        assertTrue(save.quests.day.isNotEmpty(), "no quest was credited at all")
+        assertTrue(save.quests.period.isNotEmpty(), "no quest was credited at all")
     }
 
     /** The boons apply as they do in PvE, and are spent once. */

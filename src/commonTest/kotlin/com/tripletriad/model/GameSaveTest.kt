@@ -137,8 +137,8 @@ class GameSaveTest {
     fun aProfileFromBeforeQuestsLoadsWithNone() {
         val save = json.decodeFromString<GameSave>("""{"USERNAME":"Before","MGP":42}""")
 
-        assertEquals(DailyQuests(), save.quests)
-        assertEquals("", save.quests.day)
+        assertEquals(QuestLog(), save.quests)
+        assertEquals("", save.quests.period)
         assertTrue(save.quests.questIds.isEmpty())
         assertEquals(42, save.mgp, "and the rest of the profile is unaffected")
     }
@@ -152,8 +152,8 @@ class GameSaveTest {
     @Test
     fun questsSurviveARoundTrip() {
         val save = GameSave.new(createdAt = 0L).withQuests(
-            DailyQuests(
-                day = "2026-08-12",
+            QuestLog(
+                period = "2026-08-12",
                 questIds = listOf("q-win-1", "q-play-3"),
                 progress = mapOf("q-play-3" to 2),
                 completed = mapOf("q-win-1" to 1_700_000_000_000L),
@@ -447,14 +447,14 @@ class GameSaveTest {
     @Test
     fun theServerOwnedFieldsAreTakenBackAndTheRestIsBelieved() {
         val stored = GameSave.new("Kuplu", createdAt = 0L).copy(
-            quests = DailyQuests(day = "2026-08-14", questIds = listOf("q-win-3")),
+            quests = QuestLog(period = "2026-08-14", questIds = listOf("q-win-3")),
             achievements = mapOf("earned-honestly" to 1L),
             stats = Stats(wins = 3, defeats = 1, draws = 0),
             mgp = 120,
             xp = 500,
         )
         val claimed = stored.copy(
-            quests = DailyQuests(day = "2026-08-14", completed = mapOf("q-win-3" to 1L)),
+            quests = QuestLog(period = "2026-08-14", completed = mapOf("q-win-3" to 1L)),
             achievements = mapOf("earned-honestly" to 1L, "forged" to 2L),
             stats = Stats(wins = 999),
             mgp = 999_999,
@@ -503,7 +503,7 @@ class GameSaveTest {
     @Test
     fun theServerOwnedListDoesNotShrink() {
         val stored = GameSave.new("Kuplu", createdAt = 0L).copy(
-            quests = DailyQuests(day = "d", questIds = listOf("q")),
+            quests = QuestLog(period = "d", questIds = listOf("q")),
             achievements = mapOf("a" to 1L),
             stats = Stats(wins = 1),
         )

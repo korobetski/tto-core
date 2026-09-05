@@ -47,9 +47,48 @@ package com.tripletriad.time
 fun utcDayNumber(epochMillis: Long): Long = floorDiv(epochMillis, MILLIS_PER_DAY)
 
 /**
+ * The Monday of the UTC week [epochMillis] falls in, as `YYYY-MM-DD`.
+ *
+ * ### Monday, and why the arithmetic looks like that
+ *
+ * 1970-01-01 was a **Thursday**, so day number 0 is a Thursday and the naive `dayNumber / 7` would
+ * cut the week on one. Adding [THURSDAY_OFFSET] shifts the origin back to the Monday before it, so
+ * the division lands on Mondays from then on — and `floorDiv` keeps that true for dates before the
+ * epoch, where a truncating division would round the wrong way.
+ *
+ * ### The Monday itself, rather than a week number
+ *
+ * `2026-08-31` is legible in a JSONB document and in a support question; `week 2953` is not, and it
+ * is also a number two people can disagree about — ISO weeks, US weeks and "weeks since the epoch"
+ * all answer differently. A date is the same date to everybody. It is the same reasoning [isoDate]
+ * gives for storing a day rather than a day number, and the same format, so the two keys sort and
+ * read alike.
+ */
+fun utcWeekStart(epochMillis: Long): String =
+    isoDate((utcWeekNumber(epochMillis) * DAYS_PER_WEEK - THURSDAY_OFFSET) * MILLIS_PER_DAY)
+
+/**
+ * Which Monday-to-Sunday week [epochMillis] falls in, counted from the epoch.
+ *
+ * The number behind [utcWeekStart], and it exists for the same reason [utcDayNumber] does next to
+ * [isoDate]: arithmetic wants a number and a stored record wants a string. **Seeding a weekly draw
+ * wants this one**, and getting that wrong is not subtle — seeding from `dayNumber / 7` instead
+ * cuts the week on a Thursday, so the draw a player is shown changes in the middle of the week the
+ * log is still counting. That bug shipped for exactly as long as it took to write a test that
+ * looked at day three.
+ */
+fun utcWeekNumber(epochMillis: Long): Long =
+    floorDiv(utcDayNumber(epochMillis) + THURSDAY_OFFSET, DAYS_PER_WEEK)
+
+/** 1970-01-01 was a Thursday; this is how far back the Monday before it is. */
+private const val THURSDAY_OFFSET = 3L
+
+private const val DAYS_PER_WEEK = 7L
+
+/**
  * Epoch milliseconds as `YYYY-MM-DD`, UTC.
  *
- * The readable form of [utcDayNumber], and what `DailyQuests.day` stores: a day key legible in a
+ * The readable form of [utcDayNumber], and what `QuestLog.day` stores: a day key legible in a
  * JSONB document is worth its extra bytes the first time a support question needs answering.
  */
 fun isoDate(epochMillis: Long): String {
