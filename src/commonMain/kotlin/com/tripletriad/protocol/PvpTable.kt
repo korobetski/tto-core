@@ -156,3 +156,46 @@ enum class PvpRefusal {
     /** You cannot challenge yourself. */
     YOURSELF,
 }
+
+/**
+ * How many people are awake, for the screen that has to decide whether opening a table is worth it.
+ *
+ * ### Why a count and not a list of names
+ *
+ * The question a player asks before hosting is "is anybody there", not "who". A list of names is a
+ * different feature with a different cost — it is a directory of who is playing at what hour,
+ * readable by anybody with an account, and nothing in the game needs it: a table is joined from
+ * the lobby and an invitation is sent to a name the player already knows.
+ *
+ * ### What "online" means here, exactly
+ *
+ * An account that has spoken to the server inside [WINDOW_MILLIS]. That is not presence in the
+ * sense a chat server means it — there is no socket held open and nothing announces a departure —
+ * it is the honest reading of a client that polls: somebody whose client asked us something a
+ * minute ago is at their machine, and somebody whose client has said nothing for five is not.
+ *
+ * The count **excludes the reader**, so "0 others" is a true and useful answer rather than the
+ * permanent "1" a self-inclusive count would show to somebody alone.
+ *
+ * @property others accounts other than the reader seen within the window.
+ * @property tables how many of them are sitting at an open table right now. A room with four
+ *   people and no tables is a different room from one with four people and four tables, and the
+ *   lobby says so.
+ */
+@Serializable
+data class PvpPresence(
+    val others: Int = 0,
+    val tables: Int = 0,
+) {
+    companion object {
+        /**
+         * How long silence is forgiven before an account stops counting as here.
+         *
+         * Two minutes: the lobby polls every second and the rest of the game talks to the server
+         * on every match, so a live client is never quiet this long — while a window much shorter
+         * would blink somebody out during a long match against a program, which is time spent in
+         * the game and not away from it.
+         */
+        const val WINDOW_MILLIS: Long = 120_000L
+    }
+}
