@@ -10,8 +10,10 @@ import com.tripletriad.model.MatchResult
 import com.tripletriad.model.Npc
 import com.tripletriad.model.Objective
 import com.tripletriad.model.OrderRule
+import com.tripletriad.model.WeeklyQuestCatalog
 import com.tripletriad.model.XpTable
 import com.tripletriad.model.questDayOf
+import com.tripletriad.model.questWeekOf
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -64,6 +66,40 @@ class MatchRewardsTest {
         assertTrue(
             credit.reward.quests.all { it.id in credit.save.quests.completed },
             "a quest was reported paid without being recorded",
+        )
+    }
+
+    /**
+     * **And the week's, which a match against an `Npc` used to leave untouched.**
+     *
+     * Five of the six weekly objectives — matches won, matches played, the two wins-with-a-rule and
+     * beating the Master — can only be met against an `Npc`, so crediting the week from the PvP
+     * path alone left the week's quest at zero however much was played. Asserted on a week whose
+     * draw counts any win, since the fixture plays no rule and is not the Master; `PlayPvpMatch`
+     * is the other path's to advance.
+     */
+    @Test
+    fun aCreditedMatchAdvancesTheWeeksQuestsAsWell() {
+        val at = generateSequence(AT) { it + WEEK }.first { week ->
+            WeeklyQuestCatalog.forWeek(week, profile.creationDate).all {
+                it.objective is Objective.MatchesWon || it.objective is Objective.MatchesPlayed
+            }
+        }
+
+        val credit = MatchRewards.credit(
+            profile,
+            opponent,
+            MatchResult.WIN,
+            GameRules(),
+            at,
+            Random(1),
+        )
+
+        assertEquals(questWeekOf(at), credit.save.weekly.period, "the week was not pinned")
+        assertEquals(
+            1,
+            credit.save.weekly.progressOf(credit.save.weekly.questIds.single()),
+            "the week counted nothing for a match played",
         )
     }
 
@@ -429,6 +465,9 @@ class MatchRewardsTest {
 
     private companion object {
         const val AT = 1_767_268_800_000L
+
+        /** Seven days, for stepping the weekly draw forward until it is a PvE quest. */
+        const val WEEK = 7 * 24 * 60 * 60 * 1000L
 
         /** One XP short of level 2, which [XpTable.steps] puts at 250. */
         const val XP_NEAR_LEVEL_2 = 249L

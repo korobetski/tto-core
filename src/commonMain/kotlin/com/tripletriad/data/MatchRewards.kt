@@ -213,19 +213,22 @@ object MatchRewards {
         //
         // `isPvp = false` unconditionally: this function takes an `Npc`, so it is player-versus-
         // environment by construction. Player versus player builds its own `MatchEvent`.
-        val quests = DailyQuestRepository().credit(
-            save = award.save,
-            event = MatchEvent(
-                result = result,
-                opponentIconId = npc.iconId,
-                ruleKeys = rules.activeRuleKeys(),
-                isPvp = false,
-            ),
-            at = at,
+        val event = MatchEvent(
+            result = result,
+            opponentIconId = npc.iconId,
+            ruleKeys = rules.activeRuleKeys(),
+            isPvp = false,
         )
+        val quests = DailyQuestRepository().credit(save = award.save, event = event, at = at)
+
+        // The week counts PvE too. Five of the six weekly objectives — matches won, matches
+        // played, two wins-with-a-rule, and beating the Master — can only be met against an
+        // `Npc`, so a week credited from the PvP path alone left them at zero however much was
+        // played. Only `PlayPvpMatch` is the other path's to advance, and it ignores this event.
+        val weekly = WeeklyQuestRepository().credit(save = quests.save, event = event, at = at)
 
         return MatchCredit(
-            save = quests.save,
+            save = weekly.save,
             reward = MatchReward(
                 result = result,
                 mgp = mgp,
@@ -233,6 +236,7 @@ object MatchRewards {
                 items = items,
                 achievements = award.earned,
                 quests = quests.completed,
+                weeklyQuests = weekly.completed,
                 mgpBoonSpent = mgpBoon,
                 xpBoonSpent = xpBoon,
             ),

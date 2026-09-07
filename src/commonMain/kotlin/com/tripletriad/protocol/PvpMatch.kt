@@ -84,7 +84,10 @@ typealias PvpPlay = Placement
  *   cards in front of them.
  * @property playable slots of [hand] that may be played now. Empty when it is not this side's turn,
  *   which is how a client knows the board is read-only.
- * @property deadline epoch millis by which this side must move, or null when it is not their turn.
+ * @property deadline epoch millis by which this side must act, or null when nothing is asked of
+ *   them. Usually the turn clock, and so absent while the opponent is thinking — but a freshly
+ *   paired match sends it to **both** sides, because until both have opened the board what is
+ *   being waited on is them arriving rather than them moving.
  *   Sent rather than a remaining duration because a client's clock offset is a fixed error on an
  *   instant and a compounding one on a countdown restarted at every poll.
  * @property lastPlay the placement that produced this position, or null on a board nothing has been
