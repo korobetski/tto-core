@@ -31,9 +31,9 @@ jobs:
   gate:
     # The whole gate, on the tagged commit, on the host where `build.yml` already proves it: ktlint,
     # detekt, the common tests on both JVM targets, the coverage floor, and the wasm tests in Node
-    # *and* in headless Chrome and Firefox. It is its own Linux job because Karma's browser run
-    # failed on `macos-latest` for v0.8.5 while the same commit was green on `ubuntu-latest` — and
-    # the macOS job is there for the Apple klibs, not to be a second browser host.
+    # *and* in headless Chrome and Firefox. It is its own Linux job because the macOS job is there
+    # for the Apple klibs, not to be a second host for everything else: running the whole `build`
+    # there cost twelve minutes of a slower, pricier runner to re-prove a Linux result.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
