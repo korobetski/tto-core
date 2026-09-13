@@ -43,7 +43,7 @@ group = "com.tripletriad"
 // It has to be raised as the release it is heading towards, not left behind: a default two releases
 // under what the consumers pin publishes a local artifact nothing resolves, and the comment above
 // then describes a loop that does not work.
-version = providers.gradleProperty("coreVersion").getOrElse("0.8.4")
+version = providers.gradleProperty("coreVersion").getOrElse("0.8.5")
 
 kotlin {
     // 17, matching `:shared`. The server runs 21 and consumes this happily; the reverse would not
@@ -68,6 +68,26 @@ kotlin {
             baseName = "core"
             isStatic = true
         }
+    }
+
+    // The browser game (`tto-server/docs/web-platform.md`, step 3). The server rejects a transcript
+    // that does not replay as cheating, so a browser client either runs this engine or plays by a
+    // second copy of the rules that honest players would be told they broke. Every dependency
+    // above publishes a `wasm-js` artifact at the version pinned; nothing here needed an actual.
+    //
+    // `browser()` is the target the consumer builds for. `nodejs()` is there for the tests alone:
+    // the same V8 and the same wasm runtime, without a browser for Karma to find on the host.
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmJs {
+        browser {
+            testTask {
+                useKarma {
+                    useChromeHeadless()
+                    useFirefoxHeadless()
+                }
+            }
+        }
+        nodejs()
     }
 
     sourceSets {

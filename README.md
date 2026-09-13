@@ -27,10 +27,16 @@ buildable by CI and therefore deployable at all.
 
 ## Targets
 
-`android`, `desktop` (JVM 17), `iosArm64`, `iosSimulatorArm64` — the same four the client's
-`:shared` declares, and it has to stay the same four: a target published here with no consumer is a
-klib nobody links, and a target the client needs and this does not publish is a build failure in
-the other repository.
+`android`, `desktop` (JVM 17), `iosArm64`, `iosSimulatorArm64` and `wasmJs`. The first four are
+the ones the client's `:shared` declares, and they have to stay in step with it: a target published
+here with no consumer is a klib nobody links, and a target the client needs and this does not
+publish is a build failure in the other repository.
+
+`wasmJs` is the one exception, and a temporary one: it is published **ahead** of its consumer, for
+the browser game (`tto-server/docs/web-platform.md`, step 3). The server rejects a transcript that
+does not replay as cheating, so a browser client either links this engine or plays by a second copy
+of the rules. Publishing the engine first is the same order a Kotlin upgrade already follows; the
+client's `:shared` gains the target next, and then this paragraph stops being an exception.
 
 JVM 17 rather than 21, though the server runs 21. A consumer can be newer than the library; the
 reverse fails at compile time, so the library is the one that stays lower.
@@ -43,9 +49,14 @@ cp local.properties.sample local.properties      # sdk.dir, for the Android targ
 ```
 
 `build` is ktlint, detekt, the common tests on both host targets — `desktopTest` and
-`testAndroidHostTest`, so every common test runs twice — and a coverage floor of 90% line / 75%
-branch that `check` depends on. The floor is high because this module is pure logic: there is
-nothing in it a test cannot reach.
+`testAndroidHostTest`, so every common test runs on two JVMs — then on wasm, in Node
+(`wasmJsNodeTest`) and in headless Chrome and Firefox (`wasmJsBrowserTest`), and a coverage floor
+of 90% line / 75% branch that `check` depends on. The floor is high because this module is pure
+logic: there is nothing in it a test cannot reach.
+
+The browser run needs both browsers installed where it runs; the GitHub runners have them. Mocha's
+two-second budget per test is raised in `karma.config.d/`, because `MatchAiLadderTest` plays 160
+searched matches — about 3.5 s on the JVM and 10 s under wasm — and the ladder is what it measures.
 
 The Apple targets compile only on a Mac. Kotlin/Native skips them silently everywhere else, so a
 green build on Windows says nothing about iOS — that is what the `ios` job in CI is for.

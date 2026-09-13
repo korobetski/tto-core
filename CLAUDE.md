@@ -20,6 +20,7 @@ cp local.properties.sample local.properties   # sdk.dir — the Android target n
 |---|---|
 | `./gradlew desktopTest` | common tests on the desktop JVM |
 | `./gradlew testAndroidHostTest` | the *same* common tests on Android's JVM — every test runs twice |
+| `./gradlew wasmJsNodeTest` / `wasmJsBrowserTest` | the same again under wasm — in Node, then in headless Chrome and Firefox |
 | `./gradlew desktopTest --tests "com.tripletriad.model.RulesEngineTest"` | one class (or `--tests "*.RulesEngineTest.aMethodName"`) |
 | `./gradlew allTests` | every target's tests, aggregated |
 | `./gradlew ktlintFormat` / `ktlintCheck` / `detekt` | detekt is `maxIssues: 0` — any finding fails |
@@ -106,8 +107,11 @@ also goes here first, then the consumers, never the reverse.
 constant. `tools/release.py` deliberately refuses to bump when one has moved unless
 `--protocol-moved` says it was on purpose.
 
-The four published targets — `android`, `desktop` (JVM 17), `iosArm64`, `iosSimulatorArm64` — must
-stay exactly the four the client's `:shared` declares.
+The published targets are `android`, `desktop` (JVM 17), `iosArm64`, `iosSimulatorArm64` and
+`wasmJs`. The first four must stay exactly the ones the client's `:shared` declares; `wasmJs` is
+published ahead of its consumer for the browser game (`tto-server/docs/web-platform.md`, step 3),
+and joins that rule once `:shared` declares it too. Under wasm there is no `runBlocking` and no
+threads: code that only compiles on the JVM and Native now fails `build` here.
 
 ## Style
 
