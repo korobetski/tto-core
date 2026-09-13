@@ -10,9 +10,9 @@
 #
 # GitHub Packages will not overwrite a released version, and a version that has been resolved once
 # is in somebody's dependency cache regardless. There is no un-publishing a bad build — the only
-# remedy is another version. That is why the gate below runs in the same job, immediately before
-# the upload, rather than being taken on trust from a green run on `main`: a tag can be placed on
-# any commit, including one that was never on `main`.
+# remedy is another version. That is why the gate below runs in this workflow, on the tagged commit,
+# immediately before the upload, rather than being taken on trust from a green run on `main`: a tag
+# can be placed on any commit, including one that was never on `main`.
 name: Publish
 
 on:
@@ -28,7 +28,28 @@ permissions:
   packages: write
 
 jobs:
+  gate:
+    # The whole gate, on the tagged commit, on the host where `build.yml` already proves it: ktlint,
+    # detekt, the common tests on both JVM targets, the coverage floor, and the wasm tests in Node
+    # *and* in headless Chrome and Firefox. It is its own Linux job because Karma's browser run
+    # failed on `macos-latest` for v0.8.5 while the same commit was green on `ubuntu-latest` — and
+    # the macOS job is there for the Apple klibs, not to be a second browser host.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v5
+      - uses: android-actions/setup-android@v4
+      - name: Derive the version from the tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - run: ./gradlew build --no-daemon -PcoreVersion=${{ steps.version.outputs.value }}
+
   publish:
+    needs: gate
     # **macOS, and it has to be.** Kotlin/Native cross-compiles nothing: the `iosArm64` and
     # `iosSimulatorArm64` klibs can only be produced on a Mac, and a `publish` run on Linux would
     # succeed while quietly omitting them. The root module metadata would then advertise a library
@@ -52,13 +73,27 @@ jobs:
         id: version
         run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # The gate, on the tagged commit, in the job that publishes. Everything: ktlint, detekt, the
-      # common tests on both host targets, and the coverage floor that `check` depends on.
-      - name: Build and test
-        run: ./gradlew build --no-daemon -PcoreVersion=${{ steps.version.outputs.value }}
+      # The Kotlin/Native toolchain and its LLVM and sysroot downloads. `setup-gradle` caches the
+      # Gradle user home but not `~/.konan`, so without this every run fetches them again. The key
+      # follows the catalog, which is where the Kotlin version moves.
+      - uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      # Only what `gate` cannot do. It ran the full `build` on this commit already — ktlint, detekt,
+      # both JVM test runs, the coverage floor, wasm in Node and in the browsers — and repeating it
+      # here was twelve minutes of a macOS runner re-proving a Linux result. What stays is the part
+      # only a Mac can check: the Apple klibs compile, and the common tests pass on the simulator.
+      #
+      # A separate invocation from `publish`, not one command: `publish` does not depend on the
+      # tests, so with `org.gradle.parallel` a single invocation could upload before they failed.
+      # No `--no-daemon` on either, so the second step reuses the daemon the first one warmed.
+      - name: Test the Apple targets
+        run: ./gradlew compileKotlinIosArm64 iosSimulatorArm64Test -PcoreVersion=${{ steps.version.outputs.value }}
 
       - name: Publish
-        run: ./gradlew publish --no-daemon -PcoreVersion=${{ steps.version.outputs.value }}
+        run: ./gradlew publish -PcoreVersion=${{ steps.version.outputs.value }}
         env:
           # Read by the `GitHubPackages` repository in build.gradle.kts. The built-in token is
           # scoped to this repository and expires with the job, so no long-lived credential has to

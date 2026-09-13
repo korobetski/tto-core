@@ -91,4 +91,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v5
+      # The Kotlin/Native toolchain, which `setup-gradle` does not cache — see `publish.yml`.
+      - uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml') }}
       - run: ./gradlew compileKotlinIosArm64 iosSimulatorArm64Test --no-daemon
