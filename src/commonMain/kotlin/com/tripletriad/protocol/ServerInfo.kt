@@ -109,4 +109,15 @@ enum class ClientPlatform {
     ANDROID,
     DESKTOP,
     IOS,
+
+    /**
+     * The browser build, which has nothing to download: the page it runs in *is* the release.
+     *
+     * **Not a key a server may publish** in [ClientRelease.downloads] while any client older than
+     * this entry is in use. Such a client cannot decode a map naming it, so it would read the whole
+     * [ServerInfo] as unusable — every older build locked out by one environment variable. It
+     * exists so the browser is never mistaken for one of the three installable builds and offered
+     * their file, and for nothing else yet.
+     */
+    WEB,
 }
