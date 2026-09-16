@@ -369,7 +369,10 @@ data class GameSave(
      */
     fun ownsCard(cardId: Int): Boolean = copiesOf(cardId) > 0
 
-    /** The collection as one card per copy, ascending — what a hand may be drawn from. */
+    /**
+     * The collection as one entry per copy, ascending — what a hand is drawn from. A hand still
+     * takes each id once ([DeckLimits.MAX_COPIES]); the copies are what [spareCopiesOf] sells.
+     */
     fun ownedCardIds(): List<Int> =
         cards.entries.sortedBy { it.key }.flatMap { (id, copies) -> List(copies) { id } }
 

@@ -119,7 +119,23 @@ class MatchSetupTest {
         }
     }
 
-    /** The caps refuse a second ace, never the first: the rule promises nothing either way. */
+    /**
+     * Two cards of four stars or more whenever the collection holds them, and not always the same
+     * two: the shuffle still decides which. See [DeckLimits.strongestLegalHand].
+     */
+    @Test
+    fun aRandomHandLeadsWithTwoTopCardsWhenTheCollectionHasThem() {
+        val tops = listOf(card(1, rarity = 5), card(2, rarity = 4), card(3, rarity = 4))
+        val rich = tops + (4..30).map(::card)
+
+        val hands = seeds.map { seed -> MatchPreparation.randomHand(rich, Random(seed)) }
+
+        hands.forEach { assertEquals(2, it.count { card -> card.rarity >= 4 }, "$it") }
+        assertTrue(hands.any { it.any { card -> card.rarity == 5 } }, "the ace is never drawn")
+        assertTrue(hands.any { it.none { card -> card.rarity == 5 } }, "the ace is always drawn")
+    }
+
+    /** The caps refuse a second ace, never the first — which now leads the hand. */
     @Test
     fun aRandomHandCanStillDrawAnAce() {
         val rich = (1..4).map { card(it, rarity = 5) } + (5..30).map(::card)

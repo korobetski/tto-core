@@ -237,5 +237,12 @@ enum class RejectionReason {
  * match where an ace stood next to a wall under Same Wall. Same cost, same bound — a queued
  * transcript from a 5 build is refused by [TranscriptVerifier] rather than mis-credited. Matches
  * played without the rule are untouched: `outranks` is the ordinary comparison with the flag off.
+ *
+ * **7** — `RULE_RANDOM` leads with the top cards. `MatchPreparation.randomHand` deals through
+ * `DeckLimits.strongestLegalHand`, which takes two cards of four stars or more whenever the
+ * collection can field them, and the caps themselves narrowed to FFXIV's: two cards of four stars
+ * or more, one five-star among them, no card twice. A stored Random transcript replays to a
+ * different hand whenever its shuffle did not already lead with the cards now chosen. The shuffle
+ * consumes the generator as before, so every non-Random transcript replays exactly as it did.
  */
-const val TRANSCRIPT_VERSION: Int = 6
+const val TRANSCRIPT_VERSION: Int = 7

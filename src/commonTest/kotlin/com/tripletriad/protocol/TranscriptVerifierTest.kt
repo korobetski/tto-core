@@ -359,9 +359,9 @@ class TranscriptVerifierTest {
         )
     }
 
-    /** And is accepted once the second copy is actually held. */
+    /** And is refused still once the second copy is held: a deck names a card once. */
     @Test
-    fun aDeckUsingTwoCopiesIsAcceptedWhenTwoAreOwned() {
+    fun aDeckNamingOneCardTwiceIsRefusedEvenWhenTwoAreOwned() {
         val doubled = DECK.first()
         val transcript = playHonestly(
             seed = SEED + 1,
@@ -373,8 +373,10 @@ class TranscriptVerifierTest {
             decks = listOf(Deck("test", transcript.deck)),
         )
 
-        assertIs<MatchVerdict.Accepted>(
-            TranscriptVerifier.verify(transcript, cards, npcs, TestFormats.catalog, profile),
-        )
+        val verdict =
+            TranscriptVerifier.verify(transcript, cards, npcs, TestFormats.catalog, profile)
+
+        val rejected = assertIs<MatchVerdict.Rejected>(verdict, "accepted: $verdict")
+        assertEquals(RejectionReason.DECK_ILLEGAL, rejected.reason, rejected.detail)
     }
 }

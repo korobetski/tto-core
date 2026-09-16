@@ -6,7 +6,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * [DeckLimits] — the star-rank caps a deck is built under.
+ * [DeckLimits] — the star-rank caps and the one-copy rule a deck is built under.
  *
  * The fixtures name a card by its rank on purpose: every case here is about how many of a rank are
  * in the list, and nothing at all about which cards they are.
@@ -28,9 +28,10 @@ class DeckLimitsTest {
 
     private fun table(vararg cards: Card): Map<Int, Card> = cards.associateBy { it.id }
 
-    /** The rule, stated as the numbers it is: one five-star, two four-stars, the rest uncapped. */
+    /** The rule as numbers: two cards of four stars or more, one five-star, one copy of each. */
     @Test
-    fun theCapsAreOneFiveStarAndTwoFourStars() {
+    fun theCapsAreTwoTopCardsOfWhichOneFiveStar() {
+        assertEquals(1, DeckLimits.MAX_COPIES)
         assertEquals(1, DeckLimits.limitOf(5))
         assertEquals(2, DeckLimits.limitOf(4))
         assertEquals(HAND_SIZE, DeckLimits.limitOf(3), "a rank below four is uncapped")
@@ -39,11 +40,40 @@ class DeckLimitsTest {
 
     @Test
     fun aDeckAtEveryCapIsLegal() {
-        val cards = listOf(card(5), card(4), card(4), card(3), card(1))
+        for (top in listOf(listOf(card(5), card(4)), listOf(card(4), card(4)))) {
+            val cards = top + listOf(card(3), card(3), card(1))
+            val table = table(*cards.toTypedArray())
+
+            assertTrue(DeckLimits.isLegal(cards.map { it.id }, table), "$top")
+            assertEquals(emptyMap(), DeckLimits.overLimit(cards.map { it.id }, table))
+        }
+    }
+
+    /**
+     * FFXIV's "two four-stars only if there is no five-star": the five-star spends one of the two
+     * slots. A cap per rank would have let this deck through with three top cards.
+     */
+    @Test
+    fun aFiveStarSpendsOneOfTheTwoTopSlots() {
+        val cards = listOf(card(5), card(4), card(4), card(1), card(1))
         val table = table(*cards.toTypedArray())
 
-        assertTrue(DeckLimits.isLegal(cards.map { it.id }, table))
-        assertEquals(emptyMap(), DeckLimits.overLimit(cards.map { it.id }, table))
+        assertFalse(DeckLimits.isLegal(cards.map { it.id }, table))
+        assertEquals(mapOf(4 to 3), DeckLimits.overLimit(cards.map { it.id }, table))
+        assertFalse(DeckLimits.admits(cards.take(2), cards[2]), "a four-star after 5 + 4")
+    }
+
+    @Test
+    fun aCardNamedTwiceIsRefused() {
+        val one = card(1)
+        val deck = listOf(one.id, one.id, card(1).id)
+        val table = table(one)
+
+        assertEquals(mapOf(one.id to 2), DeckLimits.repeated(deck))
+        assertEquals(emptyMap(), DeckLimits.overLimit(deck, table), "not a rank cap")
+        assertFalse(DeckLimits.isLegal(deck, table))
+        assertFalse(DeckLimits.admits(listOf(one.id), table, one))
+        assertFalse(DeckLimits.admits(listOf(one), one))
     }
 
     @Test
@@ -69,7 +99,7 @@ class DeckLimitsTest {
         val cards = listOf(card(5), card(5), card(4), card(4), card(4))
         val table = table(*cards.toTypedArray())
 
-        assertEquals(mapOf(5 to 2, 4 to 3), DeckLimits.overLimit(cards.map { it.id }, table))
+        assertEquals(mapOf(5 to 2, 4 to 5), DeckLimits.overLimit(cards.map { it.id }, table))
     }
 
     /** Five ones is a legal deck, which is what makes a starter collection playable at all. */
@@ -80,12 +110,15 @@ class DeckLimitsTest {
         assertTrue(DeckLimits.isLegal(cards.map { it.id }, table(*cards.toTypedArray())))
     }
 
-    /** Every capped rank is counted, zero included: `0 / 1` is what the editor has to draw. */
+    /**
+     * Every cap is counted, zero included: `0 / 1` is what the editor has to draw. A five-star is
+     * counted by both, because the four-star budget is "four or more".
+     */
     @Test
-    fun theTallyNamesEveryCappedRankIncludingTheEmptyOnes() {
+    fun theTallyNamesEveryCapIncludingTheEmptyOnes() {
         val five = card(5)
 
-        assertEquals(mapOf(5 to 1, 4 to 0), DeckLimits.tally(listOf(five.id), table(five)))
+        assertEquals(mapOf(5 to 1, 4 to 1), DeckLimits.tally(listOf(five.id), table(five)))
         assertEquals(mapOf(5 to 0, 4 to 0), DeckLimits.tally(emptyList(), emptyMap()))
     }
 
@@ -102,7 +135,7 @@ class DeckLimitsTest {
         val deck = listOf(five.id, 9999)
 
         assertTrue(DeckLimits.isLegal(deck, table(five)))
-        assertEquals(mapOf(5 to 1, 4 to 0), DeckLimits.tally(deck, table(five)))
+        assertEquals(mapOf(5 to 1, 4 to 1), DeckLimits.tally(deck, table(five)))
     }
 
     /** What the deck editor dims a pick on. */
@@ -144,10 +177,47 @@ class DeckLimitsTest {
         assertEquals(HAND_SIZE, taken.size)
         assertTrue(DeckLimits.isLegal(taken, table))
         assertEquals(
-            listOf(ids[0], ids[2], ids[3], ids[5], ids[6]).map { it.id },
+            listOf(ids[0], ids[2], ids[5], ids[6], ids[7]).map { it.id },
             taken,
-            "the second five-star and the third four-star are stepped over, the order is kept",
+            "the second five-star and every four-star after the first are stepped over, in order",
         )
+    }
+
+    /**
+     * What `RULE_RANDOM` deals: the first two top cards the order offers, then the rest in order,
+     * returned in the order given — so which top cards, and where they sit, is still the order's.
+     */
+    @Test
+    fun theStrongestLegalHandLeadsWithTwoTopCardsAndKeepsTheOrder() {
+        val order = listOf(
+            card(1), card(2), card(1), card(3), card(2),
+            card(1), card(5), card(5), card(4), card(4),
+        )
+
+        assertEquals(
+            listOf(order[0], order[1], order[2], order[6], order[8]),
+            DeckLimits.strongestLegalHand(order),
+        )
+    }
+
+    @Test
+    fun theStrongestLegalHandTakesWhatTopCardsThereAre() {
+        val one = listOf(card(1), card(1), card(1), card(1), card(1), card(4))
+        val none = List(HAND_SIZE + 1) { card(2) }
+        val aces = listOf(card(5), card(5), card(5))
+
+        assertEquals(one.take(4) + one[5], DeckLimits.strongestLegalHand(one))
+        assertEquals(DeckLimits.firstLegalHand(none), DeckLimits.strongestLegalHand(none))
+        assertEquals(listOf(aces[0]), DeckLimits.strongestLegalHand(aces), "short, as it must be")
+    }
+
+    /** A collection listing a card twice is dealt it once. */
+    @Test
+    fun theStrongestLegalHandNamesACardOnce() {
+        val four = card(4)
+        val order = listOf(four, four, card(1), card(1), card(1), card(1))
+
+        assertEquals(order.drop(1).distinct(), DeckLimits.strongestLegalHand(order))
     }
 
     /** Shorter than a hand when the caps cannot be met — a short list is already handled. */

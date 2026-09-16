@@ -92,9 +92,9 @@ sealed interface Requirement {
      * named.
      *
      * `ac-fob` (`Achievements.as:71`) was the sole instance and wanted the whole set: the thirteen
-     * beast cards. [target] is what makes a *ladder* out of one collection — "13 of the 35
+     * beast cards. [target] is what makes a *ladder* out of one collection — "13 of the 36
      * beasts", then 21, then 28, then all of them — instead of one all-or-nothing badge that a
-     * player collecting a 35-card tribe sees no movement on for months. It is a count over one
+     * player collecting a 36-card tribe sees no movement on for months. It is a count over one
      * pool rather than four nested [cardIds] lists because nesting would let a tier name a card
      * the tier above it does not, and progress that can go **down** as the ladder is climbed is
      * not something the screen can draw.
@@ -217,7 +217,7 @@ object AchievementCatalog {
         270, 271, 272, 273, 274, 276, 283, 291, 292, 293,
         338, 339, 371, 373, 384, 415, 418, 439, 440, 441,
         461, 474, 504, 514, 533, 534, 541, 551, 587, 606,
-        620, 663, 665, 700, 710,
+        620, 663, 665, 700, 710, 732,
     )
 
     /** Every card typed `primals` in the FFXIV table. */
@@ -255,14 +255,14 @@ object AchievementCatalog {
     val COMPANION_CARDS: List<Int> = listOf(PUPU, 2126, 2127, 2129, 2130)
 
     /**
-     * The thirty-five `beast` cards, at thirteen — the AS3 threshold, and the whole set as it
+     * The thirty-six `beast` cards, at thirteen — the AS3 threshold, and the whole set as it
      * then stood — then 21, 28 and all of them.
      */
     private val BEAST_FAMILY = Collection(
         idStem = "ac-fob",
         labelStem = "APP_AC_BEASTS",
         cards = BEAST_CARDS,
-        tiers = listOf(13, 21, 28, 35),
+        tiers = listOf(13, 21, 28, 36),
         // `ff14_thumb_37` in the original: Memeroon, and the one icon the AS3 achievements screen
         // drew from the card atlas rather than the icon sheet.
         iconId = "card_thumb_${Card.idFor(block = 1, number = 37)}",
@@ -337,7 +337,7 @@ object AchievementCatalog {
      *
      * `ac-fob` is the AS3's single beast badge, kept under its own id and its own threshold of
      * thirteen so a profile that earned it stays earned; what changed under it is the pool it
-     * counts against, which grew from those thirteen cards to all thirty-five the table types
+     * counts against, which grew from those thirteen cards to all thirty-six the table types
      * `beast`. The three tiers above it, and the three families beside it, are new.
      */
     private val LADDERS: List<Achievement> =
@@ -487,7 +487,7 @@ object AchievementCatalog {
     /**
      * What completing any one tribe pays.
      *
-     * The same figure for all four, though the tribes are 22 to 35 cards: the *card* rewards
+     * The same figure for all four, though the tribes are 22 to 36 cards: the *card* rewards
      * differ in how hard they are to reach and the money does not need to as well, and a player
      * choosing which tribe to finish should be choosing on the cards, not on the payout.
      */

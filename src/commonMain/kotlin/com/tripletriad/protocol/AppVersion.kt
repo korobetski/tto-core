@@ -304,6 +304,19 @@ data class AppVersion(
  * 4.0.0 has not shipped, so its contents are still open. Against the last version anybody ran this
  * build already refuses.
  *
+ * ### 7.0.0 — FFXIV's deck caps, one copy a card, and a Random hand that leads with its top cards
+ *
+ * A major on the first ground: `MatchPreparation.randomHand` now picks two cards of four stars or
+ * more whenever the collection holds them, so a Random transcript from a 6.x build replays to a
+ * different hand, and [TRANSCRIPT_VERSION] moves to 7 with it. **No message changes shape**: a
+ * deck that names a card twice, or three cards of four stars or more, is refused with the
+ * `DECK_ILLEGAL` a 6.x client already parses.
+ *
+ * The caps became FFXIV's — two cards of four stars or more, of which one five-star, no card twice
+ * — where 4.0.0 had one five-star *and* two four-stars. A deck saved under the old reading may now
+ * be refused; the deck editor shows which cap it breaks, and the server's fallback hand
+ * (`PveMatches.playerDeck`) deals a legal five instead of refusing to deal.
+ *
  * ### 6.1.0 — the week's quest
  *
  * A minor on the first ground the 1.1.0 entry established for daily quests, and for the same
@@ -376,7 +389,7 @@ data class AppVersion(
  * without a version at all — and no rule the engine evaluates is touched here. Deciding it a
  * second later changes when a row is written, not what any row replays to.
  */
-val CURRENT_VERSION: AppVersion = AppVersion(6, 1, 0)
+val CURRENT_VERSION: AppVersion = AppVersion(7, 0, 0)
 
 /**
  * The header both sides put the version in.

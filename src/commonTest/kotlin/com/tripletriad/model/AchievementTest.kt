@@ -60,7 +60,7 @@ class AchievementTest {
     @Test
     fun theCollectionLaddersRunFromTheirFirstRungToTheWholeSet() {
         val expected = mapOf(
-            "ac-fob" to 13, "ac-fob2" to 21, "ac-fob3" to 28, "ac-fob4" to 35,
+            "ac-fob" to 13, "ac-fob2" to 21, "ac-fob3" to 28, "ac-fob4" to 36,
             "ac-fop1" to 11, "ac-fop2" to 18, "ac-fop3" to 24, "ac-fop4" to 30,
             "ac-fog1" to 10, "ac-fog2" to 17, "ac-fog3" to 23, "ac-fog4" to 28,
             "ac-foh1" to 8, "ac-foh2" to 13, "ac-foh3" to 18, "ac-foh4" to 22,
@@ -206,13 +206,13 @@ class AchievementTest {
     }
 
     /**
-     * `ac-fob` still wants thirteen beast cards — but thirteen of **thirty-five**, not the whole
+     * `ac-fob` still wants thirteen beast cards — but thirteen of **thirty-six**, not the whole
      * set. The threshold is the AS3's and a profile that earned it keeps it; the pool underneath
      * grew to every card the table types `beast`, which is what `ac-fob4` now completes.
      */
     @Test
-    fun friendOfBeastsWantsThirteenOfTheThirtyFiveBeastCards() {
-        assertEquals(35, AchievementCatalog.BEAST_CARDS.size)
+    fun friendOfBeastsWantsThirteenOfTheThirtySixBeastCards() {
+        assertEquals(36, AchievementCatalog.BEAST_CARDS.size)
         // The booster pool was this list and is now a subset of it — thirteen cards with frozen
         // weights. They are pinned as *different* here so that widening one cannot widen the other
         // by accident; see `AchievementCatalog.BEAST_CARDS`.

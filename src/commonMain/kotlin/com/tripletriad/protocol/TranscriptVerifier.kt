@@ -100,10 +100,11 @@ object TranscriptVerifier {
         // check that pure peer-to-peer could not make; without one it is the claimant's, which
         // proves only that the transcript is internally consistent.
         val owned = owner?.cards ?: transcript.ownedCards
-        // Multiset containment, not membership. A deck naming a card twice needs two copies, and
-        // checking only that the id appears somewhere would let the rule be stated by the model and
-        // enforced by nobody — which is the arrangement this whole design exists to end. See
-        // `Deck.isAffordable` and § 1 of docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md.
+        // Multiset containment, not membership. A deck naming a card twice needs two copies — and
+        // is refused below for naming it twice — but checking only that the id appears somewhere
+        // would let the rule be stated by the model and enforced by nobody, which is the
+        // arrangement this whole design exists to end. See `Deck.isAffordable` and § 1 of
+        // docs/migration/20-CARD-COPIES-AND-PLATFORM-ACCOUNTS.md.
         val overdrawn = transcript.deck.groupingBy { it }.eachCount()
             .filter { (id, used) -> used > (owned[id] ?: 0) }
         // The deck-building caps, asked of the declared deck rather than of a saved slot: an
@@ -112,6 +113,7 @@ object TranscriptVerifier {
         // replay below deals from — a rank is a property of the card, so a client that disagrees
         // about one is a client whose replay would disagree too. See `DeckLimits`.
         val overRank = DeckLimits.overLimit(transcript.deck, cards.byId)
+        val repeated = DeckLimits.repeated(transcript.deck)
 
         return when {
             npc == null -> rejected(
@@ -133,6 +135,15 @@ object TranscriptVerifier {
                 ) { (rarity, used) ->
                     "$used cards of rank $rarity, at most ${DeckLimits.limitOf(rarity)}"
                 },
+            )
+
+            // After ownership, so a deck naming a card twice that is owned once is still told the
+            // copy is missing — the answer that was true before copies were capped, and still is.
+            repeated.isNotEmpty() -> rejected(
+                RejectionReason.DECK_ILLEGAL,
+                repeated.entries.joinToString(
+                    prefix = "deck names a card more than once: ",
+                ) { (id, used) -> "card $id named $used times, at most ${DeckLimits.MAX_COPIES}" },
             )
 
             else -> dealAndReplay(transcript, cards, npc, owned, format)

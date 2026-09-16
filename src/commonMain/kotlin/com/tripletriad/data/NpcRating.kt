@@ -8,6 +8,7 @@ import com.tripletriad.model.HAND_SIZE
 import com.tripletriad.model.MatchAi
 import com.tripletriad.model.MatchResult
 import com.tripletriad.model.Npc
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
@@ -185,6 +186,9 @@ object NpcRating {
      * The scale is therefore **absolute**. Nothing guarantees the roster uses all ten bands, and it
      * should not: if every shipped opponent is beatable half the time, the honest reading is that
      * the game has no hard opponents, not that the hardest of them is a 10.
+     *
+     * Absolute, and on 2026-09-15 found not to be the game's: see [calibratedDifficulty] for what
+     * replaced it wherever the game gives a level to calibrate against.
      */
     fun difficultyFor(winRate: Double): Int {
         require(winRate in 0.0..1.0) { "a win rate must be in 0..1, was $winRate" }
@@ -201,6 +205,78 @@ object NpcRating {
      * the strength it was measured at.
      */
     fun rated(npc: Npc, winRate: Double): Npc = npc.copy(difficulty = difficultyFor(winRate))
+
+    /** A known difficulty, and the win rate the yardstick measured against it. */
+    data class Anchor(val winRate: Double, val difficulty: Int) {
+        init {
+            require(winRate in 0.0..1.0) { "a win rate must be in 0..1, was $winRate" }
+            require(difficulty in RANGE) { "difficulty must be in $RANGE, was $difficulty" }
+        }
+    }
+
+    /**
+     * [winRate] on the scale [anchors] are on: the difficulty they have, on average, at that rate.
+     *
+     * ### Why a fitted curve after all
+     *
+     * [difficultyFor]'s equal bands were chosen so that no curve would need refitting, and on
+     * 2026-09-15 they were checked against the game. arrtripletriad.com gives a level to 122 of the
+     * FFXIV opponents, and the bands ranked them with a Spearman correlation of 0.43 against it —
+     * card power alone does no better (0.45), and the FFXIV starter as the yardstick did worse
+     * (0.22). Neither the AI nor the yardstick is the player those levels were set for. So where
+     * the game gives a level, `npcs.json` carries it and nothing measures it; this rates the rest —
+     * FFVIII's opponents, and the FFXIV ones the site lacks — among the ones it does.
+     *
+     * ### Monotone, by construction
+     *
+     * The anchors are pooled into the non-increasing step function nearest them in least squares
+     * (pool-adjacent-violators), because they are not monotone themselves: two opponents the
+     * yardstick beats equally often can be a 1 and a 7 in the game. Pooled, a higher win rate is
+     * never the harder rating. Between two pooled steps the difficulty is interpolated, beyond the
+     * outermost it is theirs, and anchors at one win rate are averaged before anything else.
+     */
+    fun calibratedDifficulty(winRate: Double, anchors: List<Anchor>): Int {
+        require(winRate in 0.0..1.0) { "a win rate must be in 0..1, was $winRate" }
+        require(anchors.isNotEmpty()) { "a calibration needs at least one anchor" }
+        val steps = pooled(anchors)
+        val above = steps.indexOfFirst { it.winRate >= winRate }
+        val fitted = when (above) {
+            -1 -> steps.last().difficulty
+            0 -> steps.first().difficulty
+            else -> {
+                val low = steps[above - 1]
+                val high = steps[above]
+                val along = (winRate - low.winRate) / (high.winRate - low.winRate)
+                low.difficulty + along * (high.difficulty - low.difficulty)
+            }
+        }
+        return fitted.roundToInt().coerceIn(RANGE)
+    }
+
+    private fun pooled(anchors: List<Anchor>): List<Step> {
+        val steps = mutableListOf<Step>()
+        val byRate = anchors.groupBy { it.winRate }.entries.sortedBy { it.key }
+        for ((rate, tied) in byRate) {
+            steps += Step(rate, tied.sumOf { it.difficulty }.toDouble() / tied.size, tied.size)
+            while (steps.size > 1 && steps[steps.size - 2].difficulty < steps.last().difficulty) {
+                val last = steps.removeLast()
+                steps += steps.removeLast().pooledWith(last)
+            }
+        }
+        return steps
+    }
+
+    /** A run of anchors pooled to one point: their mean win rate and mean difficulty. */
+    private class Step(val winRate: Double, val difficulty: Double, val weight: Int) {
+        fun pooledWith(other: Step): Step {
+            val total = weight + other.weight
+            return Step(
+                winRate = (winRate * weight + other.winRate * other.weight) / total,
+                difficulty = (difficulty * weight + other.difficulty * other.weight) / total,
+                weight = total,
+            )
+        }
+    }
 
     private const val DRAW_CREDIT = 0.5
 }

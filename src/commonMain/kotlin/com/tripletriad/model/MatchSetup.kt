@@ -298,25 +298,31 @@ object MatchPreparation {
      * rule. Random draws from the *collection*, so a Random hand exempt from the caps would have
      * made selling the way around them: a player who dumps everything but their five-stars is
      * dealt the five-ace hand the deck editor refuses to build, and the cap would end up
-     * punishing the wide collection it was written to protect. The rule still promises nothing —
-     * an ace is drawn when the shuffle offers one — it only promises the hand is one the player
-     * could have brought. `RULE_SWAP` stays the single way to hold more than the caps allow.
+     * punishing the wide collection it was written to protect. `RULE_SWAP` stays the single way to
+     * hold more than the caps allow.
+     *
+     * **And leading with the top cards** ([DeckLimits.strongestLegalHand]). Taking the first legal
+     * five of the shuffle dealt a collection with two four-stars a hand without either most of the
+     * time, which made Random a rule a strong collection lost to. Two cards of four stars or more
+     * are now dealt whenever the collection can field them; which two, and which low cards join
+     * them, is still the shuffle's.
      *
      * The generator is consumed identically either way: `shuffled` draws for the whole list
-     * whatever is taken from it afterwards, so only a match whose shuffle led with an illegal five
-     * replays differently. That is a replay change all the same — see `TRANSCRIPT_VERSION`.
+     * whatever is taken from it afterwards, so what a replay can disagree about is which five were
+     * picked from the shuffle, never the rest of the deal. That is a replay change all the same —
+     * see `TRANSCRIPT_VERSION`.
      *
      * Shorter than [HAND_SIZE] when the collection cannot field a legal five, which is the
      * sold-down profile above. Greedy selection over the whole shuffle is exact
-     * ([DeckLimits.firstLegalHand]), so a short answer means no legal five exists rather than that
-     * this draw missed one; [prepare] falls back to the chosen deck there, on the grounds that a
-     * rule may take a choice away but may not refuse to deal.
+     * ([DeckLimits.strongestLegalHand]), so a short answer means no legal five exists rather than
+     * that this draw missed one; [prepare] falls back to the chosen deck there, on the grounds that
+     * a rule may take a choice away but may not refuse to deal.
      */
     fun randomHand(collection: List<Card>, random: Random = Random.Default): List<Card> {
         require(collection.size >= HAND_SIZE) {
             "a random hand needs at least $HAND_SIZE cards to draw from, had ${collection.size}"
         }
-        return DeckLimits.firstLegalHand(collection.shuffled(random))
+        return DeckLimits.strongestLegalHand(collection.shuffled(random))
     }
 
     /**

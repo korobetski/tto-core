@@ -207,7 +207,7 @@ class PveMatchTest {
             decks = listOf(
                 // Two five-stars, which is one more than a deck may name.
                 Deck("Greedy", listOf(36, 37, 1, 2, 3).map(::ff14)),
-                Deck("Legal", listOf(36, 38, 39, 1, 2).map(::ff14)),
+                Deck("Legal", listOf(36, 38, 1, 2, 4).map(::ff14)),
             ),
         )
 
@@ -219,7 +219,7 @@ class PveMatchTest {
     /** The deal refuses it too: the caps are checked where the hand is drawn, not just shown. */
     @Test
     fun aDeckOverAStarRankCapFallsBackWhenItIsDealt() {
-        val legal = listOf(36, 38, 39, 1, 2).map(::ff14)
+        val legal = listOf(36, 38, 1, 2, 4).map(::ff14)
         val save = profile(
             cards = ((1..12) + (36..40)).associate { ff14(it) to 1 },
             decks = listOf(
@@ -613,22 +613,25 @@ class PveMatchTest {
     }
 
     /**
-     * `RULE_RANDOM` draws five without replacement from the collection, and a copy is a card the
-     * draw can reach — a profile holding three of one card and two others can field a hand that a
-     * distinct-card list would have refused to deal. See `GameSave.ownedCardIds`.
+     * `RULE_RANDOM` deals a card once however many copies the collection holds — the one-copy rule
+     * a deck is built under ([DeckLimits.MAX_COPIES]). Three copies of one card used to be three
+     * chances of fielding it, which is the deck the editor now refuses to build.
      */
     @Test
-    fun aRandomHandCanBeDealtFromFewerThanFiveDistinctCards() {
+    fun aRandomHandNamesACardOnceWhateverTheCopies() {
         val chaotic = opponent.copy(ruleKeys = listOf("RULE_RANDOM"))
         val hoarder = profile(
-            cards = mapOf(ff14(1) to 3, ff14(2) to 1, ff14(3) to 1),
+            cards = mapOf(ff14(1) to 3) + (2..5).associate { ff14(it) to 1 },
             decks = emptyList(),
         )
 
-        val hand = PveMatches.assemble(hoarder, chaotic, catalog, TestFormats.ff14, Random(1))
-            .setup.state.hands.getValue(CardColor.BLUE)
+        for (seed in 1..20) {
+            val hand = PveMatches
+                .assemble(hoarder, chaotic, catalog, TestFormats.ff14, Random(seed))
+                .setup.state.hands.getValue(CardColor.BLUE)
 
-        assertEquals(HAND_SIZE, hand.size)
-        assertEquals(3, hand.count { it.id == ff14(1) }, "all three copies are drawable")
+            assertEquals((1..5).map(::ff14).toSet(), hand.map { it.id }.toSet(), "seed $seed")
+            assertEquals(HAND_SIZE, hand.size, "seed $seed")
+        }
     }
 }

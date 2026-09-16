@@ -243,6 +243,66 @@ class NpcRatingTest {
         assertNotEquals(stale.difficulty, rated.difficulty)
     }
 
+    // ---- The calibration --------------------------------------------------
+
+    private fun anchors(vararg known: Pair<Double, Int>) =
+        known.map { (winRate, difficulty) -> NpcRating.Anchor(winRate, difficulty) }
+
+    /** Anchors that already agree with a monotone scale are that scale, and between them a line. */
+    @Test
+    fun anchorsThatAgreeAreReproducedAndInterpolatedBetween() {
+        val agreeing = anchors(0.9 to 1, 0.5 to 5, 0.1 to 9)
+
+        assertEquals(1, NpcRating.calibratedDifficulty(0.9, agreeing))
+        assertEquals(5, NpcRating.calibratedDifficulty(0.5, agreeing))
+        assertEquals(9, NpcRating.calibratedDifficulty(0.1, agreeing))
+        assertEquals(3, NpcRating.calibratedDifficulty(0.7, agreeing), "halfway between 1 and 5")
+        assertEquals(1, NpcRating.calibratedDifficulty(1.0, agreeing), "past the easiest anchor")
+        assertEquals(9, NpcRating.calibratedDifficulty(0.0, agreeing), "past the hardest anchor")
+    }
+
+    /**
+     * An anchor harder than one the yardstick beats less often is pooled with it, not obeyed.
+     *
+     * 0.4 → 3 and 0.6 → 7 contradict each other, so both become 5 at 0.5. Obeyed, 0.4 would read 3
+     * and 0.6 would read 7 — a harder rating for an opponent that loses more.
+     */
+    @Test
+    fun anAnchorThatContradictsItsNeighbourIsPooledWithIt() {
+        val contradicting = anchors(0.4 to 3, 0.6 to 7, 0.8 to 1)
+
+        assertEquals(5, NpcRating.calibratedDifficulty(0.4, contradicting))
+        assertEquals(4, NpcRating.calibratedDifficulty(0.6, contradicting), "5 + (1 - 5) / 3")
+    }
+
+    /** Two opponents measured alike are one point, whatever order they come in. */
+    @Test
+    fun anchorsAtOneWinRateAreAveraged() {
+        assertEquals(4, NpcRating.calibratedDifficulty(0.5, anchors(0.5 to 7, 0.5 to 1)))
+        assertEquals(4, NpcRating.calibratedDifficulty(0.5, anchors(0.5 to 1, 0.5 to 7)))
+    }
+
+    @Test
+    fun aCalibratedScaleNeverRatesAWeakerMatchupHarder() {
+        val noisy = anchors(0.95 to 2, 0.9 to 1, 0.7 to 6, 0.6 to 3, 0.55 to 8, 0.3 to 4, 0.2 to 10)
+
+        val produced = (0..100).map { NpcRating.calibratedDifficulty(it / 100.0, noisy) }
+
+        assertTrue(produced.all { it in NpcRating.RANGE }, "produced $produced")
+        assertEquals(produced.sortedDescending(), produced, "a higher win rate never rates harder")
+    }
+
+    @Test
+    fun aCalibrationWithNothingToCalibrateAgainstIsAProgrammingError() {
+        assertFailsWith<IllegalArgumentException> {
+            NpcRating.calibratedDifficulty(0.5, emptyList())
+        }
+        assertFailsWith<IllegalArgumentException> {
+            NpcRating.calibratedDifficulty(1.5, anchors(0.5 to 5))
+        }
+        assertFailsWith<IllegalArgumentException> { NpcRating.Anchor(0.5, difficulty = 0) }
+    }
+
     private companion object {
         /** Enough to separate two opponents, few enough that the suite stays quick. */
         const val TRIALS = 60
