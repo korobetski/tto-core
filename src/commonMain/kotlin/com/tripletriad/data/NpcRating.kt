@@ -259,8 +259,10 @@ object NpcRating {
         for ((rate, tied) in byRate) {
             steps += Step(rate, tied.sumOf { it.difficulty }.toDouble() / tied.size, tied.size)
             while (steps.size > 1 && steps[steps.size - 2].difficulty < steps.last().difficulty) {
-                val last = steps.removeLast()
-                steps += steps.removeLast().pooledWith(last)
+                // Not `removeLast()`: built on JDK 21+ it binds to `java.util.List.removeLast`,
+                // which JDK 17 (CI, Android's host tests) does not have.
+                val last = steps.removeAt(steps.lastIndex)
+                steps += steps.removeAt(steps.lastIndex).pooledWith(last)
             }
         }
         return steps
