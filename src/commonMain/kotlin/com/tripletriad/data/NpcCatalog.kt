@@ -53,14 +53,14 @@ data class NpcCatalog(
      * tell which of them are worth attempting, and the fee is charged either way — so the honest
      * reading of that list is that it is unsorted advice at best.
      *
-     * The rule is [LEVEL_REACH] above the character's own level: at level 1 the five easiest are
-     * open, and each level opens what the last one made plausible. **One** ahead rather than none,
-     * because a list with nothing above your weight is a list with nothing to aim at.
+     * The rule is [LEVEL_REACH] above the character's own level: at level 1 every opponent of
+     * difficulty 2 or less is open, and each level opens what the last one made plausible.
+     * **One** ahead rather than none, because a list with nothing above your weight is a list with
+     * nothing to aim at.
      *
-     * Note the ff8 table declares `difficulty` **0 for all twenty-five of its opponents** — it is a
-     * field the FF8 data never filled in — so this gate is inert there and that collection behaves
-     * exactly as it did. That is the right outcome by accident rather than by design, and it is
-     * recorded here so a later pass that fills those numbers in knows it is turning a gate on.
+     * The client that ships with this module no longer uses the gate: it opens opponents by zone,
+     * a place at a time, and passes a level high enough to switch this filter off. It is kept for
+     * callers that have no zones, and because the hour and achievement filters still apply.
      *
      * ### The achievement gate, which the original does not have either
      *

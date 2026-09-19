@@ -463,6 +463,49 @@ class MatchRewardsTest {
         }
     }
 
+    // ---- Rivalry ---------------------------------------------------------
+
+    private val rival = Npc(id = 2, nameKey = "STR_NPC_Rival", iconId = "rival", difficulty = 3)
+
+    private fun beaten(times: Int) = profile.copy(npcWins = mapOf(rival.iconId to times))
+
+    /** Three wins raise the opponent a band, and the XP it pays comes off the raised difficulty. */
+    @Test
+    fun aRivalPaysLikeTheHarderOpponentItHasBecome() {
+        assertEquals(
+            31,
+            credit(MatchResult.WIN, save = beaten(2), npc = rival).reward.xp,
+            "stage 0",
+        )
+        assertEquals(
+            35,
+            credit(MatchResult.WIN, save = beaten(3), npc = rival).reward.xp,
+            "stage 1",
+        )
+        assertEquals(
+            39,
+            credit(MatchResult.WIN, save = beaten(6), npc = rival).reward.xp,
+            "stage 2",
+        )
+    }
+
+    /** A tournament rung is authored as a curve; rivalry must not flatten it. */
+    @Test
+    fun aTournamentRungIsExemptFromRivalry() {
+        val boosted = MatchRewards.credit(
+            save = beaten(6),
+            npc = rival,
+            result = MatchResult.WIN,
+            rules = GameRules(),
+            at = AT,
+            random = Random(1),
+            // A ladder that multiplies nothing: equal to NONE but for the flag, which is the case
+            // an inferred exemption got wrong.
+            boost = RewardBoost(rung = true),
+        )
+        assertEquals(31, boosted.reward.xp)
+    }
+
     private companion object {
         const val AT = 1_767_268_800_000L
 

@@ -55,10 +55,15 @@ data class ShopOffer(val item: Item, val price: Int) {
  * opponent reward, and neither grants one either.
  */
 object ShopCatalog {
-    /** `FF14_SHOP` */
+    /**
+     * `FF14_SHOP`, plus five cards the original never sold: #125 Fenrir, #444, #465-467. The Gold
+     * Saucer sells them for MGP in FFXIV, at the prices here (per ffxivcollect, 2026-09-19); with
+     * no shelf they had no source at all in this port.
+     */
     val ff14: List<ShopOffer> = listOf(
         ShopOffer(PotionItem(PotionType.MGP), price = 50),
         ShopOffer(PotionItem(PotionType.XP), price = 50),
+        ShopOffer(PotionItem(PotionType.LUCK), price = LUCK_PRICE),
         ShopOffer(CardItem(258), price = 120),
         ShopOffer(CardItem(269), price = 150),
         ShopOffer(CardItem(276), price = 200),
@@ -93,6 +98,8 @@ object ShopCatalog {
         ShopOffer(CardItem(577), price = 22_000),
         // #319 Valens van Varro
         ShopOffer(CardItem(576), price = 22_400),
+        // #466 Jullus pyr Norbanus
+        ShopOffer(CardItem(723), price = 24_000),
         // #353 Thal
         ShopOffer(CardItem(610), price = 24_800),
         // #362 Byregot
@@ -103,14 +110,22 @@ object ShopCatalog {
         ShopOffer(CardItem(657), price = 24_800),
         // #427 Ark Angel MR
         ShopOffer(CardItem(684), price = 24_800),
+        // #467 Zero
+        ShopOffer(CardItem(724), price = 32_000),
+        // #465 Nitowikwe
+        ShopOffer(CardItem(722), price = 36_000),
         // #364 Scarmiglione
         ShopOffer(CardItem(621), price = 40_000),
+        // #444 King Elmer III
+        ShopOffer(CardItem(701), price = 48_000),
         // #300 Elidibus
         ShopOffer(CardItem(557), price = 56_000),
         // #434 Prishe of the Distant Chains
         ShopOffer(CardItem(691), price = 60_000),
         // #356 Endsinger
         ShopOffer(CardItem(613), price = 72_000),
+        // #125 Fenrir
+        ShopOffer(CardItem(381), price = 72_000),
         // #181 Gigi
         ShopOffer(CardItem(437), price = 90_000),
         // #241 Stormblood Tataru Taru
@@ -129,6 +144,7 @@ object ShopCatalog {
     val ff8: List<ShopOffer> = listOf(
         ShopOffer(PotionItem(PotionType.MGP), price = 50),
         ShopOffer(PotionItem(PotionType.XP), price = 50),
+        ShopOffer(PotionItem(PotionType.LUCK), price = LUCK_PRICE),
         // #5 Blobra
         ShopOffer(CardItem(2053), price = 120),
         ShopOffer(CardItem(2080), price = 350),
@@ -168,6 +184,13 @@ object ShopCatalog {
      * `shopScreen.as`. This is what a caller reads, and [offers] is how it is filtered.
      */
     val shelf: List<ShopOffer> = (ff14 + ff8).distinct()
+
+    /**
+     * Not the AS3's — its shelves had no luck potion to sell. Six times an MGP boon, because it
+     * works on the drop table, the one reward MGP cannot buy back: three rolled-twice wins are
+     * worth roughly a pack's chance at a card, and a pack costs several hundred.
+     */
+    private const val LUCK_PRICE = 300
 
     /** [shelf] with the priced packs on it, in shelf order: potions, packs, then single cards. */
     fun shelf(cards: Map<Int, Card>): List<ShopOffer> {

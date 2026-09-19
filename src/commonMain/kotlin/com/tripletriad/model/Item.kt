@@ -5,12 +5,11 @@ import kotlinx.serialization.Serializable
 import kotlin.random.Random
 
 /**
- * Which of a potion's two boons it raises. `PotionItem.as:18-23` writes `{type:'XP'|'MGP',
+ * Which of a potion's boons it raises. `PotionItem.as:18-23` writes `{type:'XP'|'MGP',
  * value:n}`.
  *
- * `Save.DATAS.BOONS` has a third slot, `LUCK`, that **no potion grants** — no `LUCK_BOOST_MOD`
- * exists and nothing writes it. It is modelled on [Boons] because the save file has the field, but
- * it has no member here because nothing can produce it.
+ * [LUCK] is the port's. `Save.DATAS.BOONS` always had the slot, but no AS3 potion granted it and
+ * nothing read it; [PotionType.LUCK] fills it now, and [Npc.rollLuckyRewards] is what it does.
  */
 @Serializable
 enum class BoonType {
@@ -19,6 +18,9 @@ enum class BoonType {
 
     @SerialName("MGP")
     MGP,
+
+    @SerialName("LUCK")
+    LUCK,
 }
 
 /** What using a potion does: raise [type] by [value]. `PotionItem.modifier`. */
@@ -54,6 +56,14 @@ enum class PotionType(val modifier: BoonModifier) {
 
     @SerialName("BIG_MGP_BOOST")
     BIG_MGP(BoonModifier(BoonType.MGP, 10)),
+
+    /**
+     * Not in `PotionItem.as`: the port's, for the `LUCK` slot the original saved and never
+     * filled. Three wins whose drop table is rolled twice, the rarer haul kept — see
+     * [Npc.rollLuckyRewards].
+     */
+    @SerialName("LUCK_BOOST")
+    LUCK(BoonModifier(BoonType.LUCK, 3)),
     ;
 
     /** `PotionItem.as:35` — `i18n.gettext('STR_' + _potionType)`. */
@@ -78,6 +88,7 @@ enum class PotionType(val modifier: BoonModifier) {
             MGP -> "MGP_BOOST"
             BIG_XP -> "BIG_XP_BOOST"
             BIG_MGP -> "BIG_MGP_BOOST"
+            LUCK -> "LUCK_BOOST"
         }
 }
 

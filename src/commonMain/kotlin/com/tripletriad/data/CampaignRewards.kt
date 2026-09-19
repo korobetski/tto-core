@@ -102,6 +102,7 @@ object CampaignRewards {
         drop = campaign.dropMultiplier,
         xp = campaign.xpMultiplier,
         pays = result != MatchResult.DRAW,
+        rung = true,
     )
 
     /**

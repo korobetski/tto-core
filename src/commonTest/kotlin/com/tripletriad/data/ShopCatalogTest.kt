@@ -78,8 +78,8 @@ class ShopCatalogTest {
      */
     @Test
     fun theTwoAuthoredTablesHoldWhatTheAs3PricedByHand() {
-        assertEquals(12 + 26, ShopCatalog.ff14.size, "FF14_SHOP less its eight packs, plus Trader")
-        assertEquals(5 + 4, ShopCatalog.ff8.size, "FF8_SHOP has 5, plus four hand-priced cards")
+        assertEquals(12 + 26 + 1 + 5, ShopCatalog.ff14.size, "less 8 packs; Trader, luck, 5 MGP")
+        assertEquals(5 + 4 + 1, ShopCatalog.ff8.size, "FF8_SHOP has 5, four hand-priced, luck")
         assertTrue(
             (ShopCatalog.ff14 + ShopCatalog.ff8).none { it.item is BoosterItem },
             "a pack is priced, not authored",

@@ -19,6 +19,8 @@ private const val GILGAMESH = 2128
 
 private const val PUPU = 2096
 
+private const val REPEATED_WINS = 20
+
 class AchievementTest {
     /** Every collection rung this port authored — the AS3 shipped only `ac-fob`. */
     private val authoredCollections = setOf(
@@ -37,6 +39,10 @@ class AchievementTest {
         val ported = AchievementCatalog.all
             .filterNot { it.requirement is Requirement.CampaignWins }
             .filterNot { it.id in authoredCollections }
+            // The hidden Zantetsuken nod is authored here too: FFVIII never had achievements.
+            .filterNot { it.requirement is Requirement.Deed }
+            // And the places of the client's map, which the AS3 did not have either.
+            .filterNot { it.requirement is Requirement.NpcsBeaten }
         assertEquals(22, ported.size)
         assertEquals(
             AchievementCatalog.all.map { it.id }.distinct().size,
@@ -112,6 +118,32 @@ class AchievementTest {
     }
 
     @Test
+    fun aPlaceIsClearedByBeatingEachOfItsOpponentsOnce() {
+        val place = PlaceAchievements.PLACES.first { it.zoneId == "galbadia" }
+        val cleared = assertNotNull(AchievementCatalog[AchievementCatalog.placeCleared("galbadia")])
+        val allButOne = place.members.drop(1).associateWith { REPEATED_WINS }
+
+        assertFalse(cleared.isEarnedBy(GameSave(npcWins = allButOne)), "repeat wins count once")
+        assertEquals(
+            place.members.size - 1,
+            cleared.progressFor(GameSave(npcWins = allButOne)).current,
+        )
+        assertTrue(cleared.isEarnedBy(GameSave(npcWins = place.members.associateWith { 1 })))
+        assertEquals(place.mgp, cleared.mgpReward, "clearing a place pays its tournament's entry")
+    }
+
+    @Test
+    fun everyPlaceHasItsClearingAndEveryTournamentItsWin() {
+        for (place in PlaceAchievements.PLACES) {
+            assertNotNull(AchievementCatalog[AchievementCatalog.placeCleared(place.zoneId)])
+            val won = AchievementCatalog.all.filter {
+                (it.requirement as? Requirement.CampaignWins)?.campaignKey == place.campaignKey
+            }
+            assertEquals(1, won.size, "${place.campaignKey} should have exactly one achievement")
+        }
+    }
+
+    @Test
     fun theLabelKeysAreTheAs3I18nKeys() {
         assertEquals("STR_Triple_Team_I", AchievementCatalog["ac-tt1"]!!.labelKey)
         assertEquals("STR_Always_Bet_On_Me", AchievementCatalog["ac-wof6"]!!.labelKey)
@@ -149,18 +181,20 @@ class AchievementTest {
                 "ac-fog1" to CardItem(448),
                 "ac-foh1" to CardItem(473),
                 "ac-foc" to CardItem(2159),
+                // The hidden one: FFVIII's Gilgamesh, which had no other way in.
+                "ac-zantetsuken" to CardItem(2128),
             ),
             cards,
         )
 
         val mgp = AchievementCatalog.all
-            .filter { it.mgpReward > 0 }
+            .filter { it.mgpReward > 0 && it.requirement !is Requirement.NpcsBeaten }
             .associate { it.id to it.mgpReward }
 
         assertEquals(
             mapOf("ac-fob4" to 5_000, "ac-fop4" to 5_000, "ac-fog4" to 5_000, "ac-foh4" to 5_000),
             mgp,
-            "only a completed tribe pays MGP",
+            "only a completed tribe and a cleared place pay MGP",
         )
         assertTrue(AchievementCatalog["ac-fob"]!!.hasReward)
         assertFalse(AchievementCatalog["ac-fob2"]!!.hasReward, "a middle rung pays nothing")

@@ -63,6 +63,21 @@ sealed interface Requirement {
     }
 
     /**
+     * Have beaten each of [iconIds] at least once. Not an AS3 requirement.
+     *
+     * Counts opponents, not wins: twenty wins over the same one are one of [iconIds], which is
+     * what "everyone in this place" has to mean.
+     */
+    data class NpcsBeaten(val iconIds: List<String>) : Requirement {
+        init {
+            require(iconIds.isNotEmpty()) { "nobody to beat" }
+        }
+
+        override fun progress(save: GameSave): Progress =
+            Progress(iconIds.count { (save.npcWins[it] ?: 0) > 0 }, iconIds.size)
+    }
+
+    /**
      * Win [count] matches with [ruleKey] active. `RULES_W[ruleKey]` — the Wheel of Fortune tier,
      * which uses `RULE_ROULETTE`.
      *
@@ -116,6 +131,18 @@ sealed interface Requirement {
         override fun progress(save: GameSave): Progress =
             Progress(cardIds.count { save.ownsCard(it) }, target)
     }
+
+    /**
+     * Have done [deedId] — see [GameSave.deeds]. Not an AS3 requirement.
+     *
+     * The one requirement that is not a measure of how much of something a profile has, which is
+     * why it is 0 or 1: a progress bar towards a deed would be a bar that never moves until it is
+     * full.
+     */
+    data class Deed(val deedId: String) : Requirement {
+        override fun progress(save: GameSave): Progress =
+            Progress(if (save.hasDeed(deedId)) 1 else 0, 1)
+    }
 }
 
 /**
@@ -138,6 +165,8 @@ sealed interface Requirement {
  *   *decide* about — use it, sell it, keep it — and money is not. A pouch ([PouchItem]) is the one
  *   exception and it exists for a reason this does not share: an auction settles while nobody is
  *   watching, so the pouch is the only notice the seller gets. An achievement announces itself.
+ * @property hidden kept off the achievements screen until it is earned: its requirement *is* the
+ *   secret, and listing it would spell the recipe out. The screen may say how many there are.
  */
 data class Achievement(
     val id: String,
@@ -146,6 +175,7 @@ data class Achievement(
     val requirement: Requirement,
     val reward: Item? = null,
     val mgpReward: Int = 0,
+    val hidden: Boolean = false,
 ) {
     init {
         require(mgpReward >= 0) { "$id pays a negative $mgpReward MGP" }
@@ -364,9 +394,26 @@ object AchievementCatalog {
         campaign(CAMPAIGN_BALAMB, "APP_AC_CAMPAIGN_BALAMB", "balamb"),
         campaign(CAMPAIGN_CARD_CLUB, "APP_AC_CAMPAIGN_CC", "cc"),
         campaign(CAMPAIGN_GOLD_SAUCER, "APP_AC_CAMPAIGN_GS", "gs"),
+        // Hidden: the requirement is the secret. See [Deeds.ZANTETSUKEN] for the nod, and
+        // `Achievement.hidden` for what the screen does instead of listing it.
+        Achievement(
+            id = ZANTETSUKEN,
+            labelKey = "APP_AC_ZANTETSUKEN",
+            iconId = "card_thumb_$GILGAMESH",
+            requirement = Requirement.Deed(Deeds.ZANTETSUKEN),
+            reward = CardItem(GILGAMESH),
+            hidden = true,
+        ),
     )
 
-    val all: List<Achievement> = PORTED + LADDERS + AUTHORED
+    val all: List<Achievement> = PORTED + LADDERS + AUTHORED +
+        PlaceAchievements.achievements(existingCampaigns = setOf("balamb", "cc", "gs"))
+
+    /**
+     * The achievement for having beaten everyone who holds [zoneId] shut — the client's `CLEARED`,
+     * earned on the server. Its tournament names it in `requiresAchievement`.
+     */
+    fun placeCleared(zoneId: String): String = "ac-zone-$zoneId"
 
     private val byId: Map<String, Achievement> = all.associateBy { it.id }
 
@@ -477,6 +524,9 @@ object AchievementCatalog {
      */
     const val CAMPAIGN_BALAMB: String = "ac-cmp-balamb"
 
+    /** The hidden achievement for [Deeds.ZANTETSUKEN]. */
+    const val ZANTETSUKEN: String = "ac-zantetsuken"
+
     const val CAMPAIGN_CARD_CLUB: String = "ac-cmp-cc"
 
     const val CAMPAIGN_GOLD_SAUCER: String = "ac-cmp-gs"
@@ -502,6 +552,12 @@ object AchievementCatalog {
     private const val GRYNEWAHT = 448
 
     private const val ARENVALD_LENTINUS = 473
+
+    /**
+     * FFVIII's Gilgamesh, `STR_FF8_CARD_80` — the one card of its set no pack, opponent or ladder
+     * gives, so [ZANTETSUKEN] is the only way to it. Not FFXIV's 295 or 505.
+     */
+    private const val GILGAMESH = 2128
 
     /** The FFVIII secret card, hidden in the collection screen until it is owned. */
     private const val MOOBA = 2159
