@@ -380,5 +380,26 @@ data class Npc(
      * none.
      */
     fun rollRewards(random: Random = Random.Default): List<Item> =
-        itemRewards.filter { random.nextDouble() < it.rate }.mapNotNull { it.item() }
+        rollEntries(random).mapNotNull { it.item() }
+
+    /**
+     * The table rolled twice, the rarer haul kept — what a luck boon buys ([PotionType.LUCK]).
+     *
+     * "Rarer" is read off the table itself: each entry won weighs `1 / rate`, so one 5 % card
+     * outweighs three 25 % potions, and nothing outside this record (card rarity, what the player
+     * owns) has to be known. A tie keeps the first roll. Rolled **after** any tournament boost,
+     * on whatever table the caller hands in.
+     */
+    fun rollLuckyRewards(random: Random = Random.Default): List<Item> {
+        val first = rollEntries(random)
+        val second = rollEntries(random)
+        val kept = if (rarity(second) > rarity(first)) second else first
+        return kept.mapNotNull { it.item() }
+    }
+
+    private fun rollEntries(random: Random): List<ItemReward> =
+        itemRewards.filter { random.nextDouble() < it.rate }
+
+    private fun rarity(entries: List<ItemReward>): Double =
+        entries.sumOf { if (it.rate > 0.0) 1.0 / it.rate else 0.0 }
 }

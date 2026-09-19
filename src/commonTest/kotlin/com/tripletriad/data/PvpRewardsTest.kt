@@ -1,9 +1,12 @@
 package com.tripletriad.data
 
+import com.tripletriad.model.AchievementCatalog
 import com.tripletriad.model.Boons
 import com.tripletriad.model.Card
+import com.tripletriad.model.CardItem
 import com.tripletriad.model.DailyQuestCatalog
 import com.tripletriad.model.Deck
+import com.tripletriad.model.Deeds
 import com.tripletriad.model.GameRules
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.MatchResult
@@ -311,8 +314,72 @@ class PvpRewardsTest {
         assertEquals(profile.stats.wins + 1, credited.save.stats.wins)
     }
 
+    // ---- Zantetsuken -----------------------------------------------------
+
+    private val odin = Deeds.ODIN_FF8
+    private val holdingOdin = profile.withCard(odin)
+
+    private fun gilgameshIn(save: GameSave) =
+        save.bag.any { it is CardItem && it.cardId == GILGAMESH }
+
+    /**
+     * Losing FFVIII's Odin in a settlement records the deed, and the hidden achievement pays
+     * Gilgamesh **in the same credit**: the deed is recorded before the achievements are checked.
+     */
+    @Test
+    fun losingOdinEarnsZantetsukenAndGilgamesh() {
+        val credited = credit(MatchResult.LOSE, save = holdingOdin, cardsLost = listOf(odin)).save
+
+        assertTrue(credited.hasDeed(Deeds.ZANTETSUKEN))
+        assertTrue(credited.hasAchievement(AchievementCatalog.ZANTETSUKEN))
+        assertTrue(gilgameshIn(credited), "the achievement pays Gilgamesh into the bag")
+        assertFalse(credited.ownsCard(odin), "Odin is gone, which is the price")
+    }
+
+    /** Under Direct a winner can lose a card too: the card leaving counts, not the result. */
+    @Test
+    fun itIsTheLossOfTheCardThatCountsNotTheResult() {
+        val credited = credit(MatchResult.WIN, save = holdingOdin, cardsLost = listOf(odin)).save
+        assertTrue(credited.hasAchievement(AchievementCatalog.ZANTETSUKEN))
+    }
+
+    @Test
+    fun winningOdinOrLosingAnotherCardDoesNothing() {
+        val won = credit(MatchResult.WIN, cardsWon = listOf(odin)).save
+        val lostOther = credit(
+            MatchResult.LOSE,
+            save = holdingOdin,
+            cardsLost = listOf(wagered),
+        ).save
+        // FFXIV's Odin, card 308, is a different card of the same name.
+        val lostFfxivOdin = credit(MatchResult.LOSE, cardsLost = listOf(FFXIV_ODIN)).save
+
+        for (save in listOf(won, lostOther, lostFfxivOdin)) {
+            assertFalse(save.hasDeed(Deeds.ZANTETSUKEN))
+            assertFalse(save.hasAchievement(AchievementCatalog.ZANTETSUKEN))
+            assertFalse(gilgameshIn(save))
+        }
+    }
+
+    /** Losing a second Odin pays nothing more: the deed is a set entry, the achievement is once. */
+    @Test
+    fun gilgameshIsPaidOnce() {
+        val first = credit(MatchResult.LOSE, save = holdingOdin, cardsLost = listOf(odin)).save
+        val again = credit(MatchResult.LOSE, save = first.withCard(odin), cardsLost = listOf(odin))
+
+        assertEquals(first.bag, again.save.bag)
+        assertTrue(again.reward.achievements.none { it.id == AchievementCatalog.ZANTETSUKEN })
+    }
+
+    @Test
+    fun zantetsukenIsHidden() {
+        assertEquals(true, AchievementCatalog[AchievementCatalog.ZANTETSUKEN]?.hidden)
+    }
+
     private companion object {
         const val AT = 1_767_268_800_000L
+        const val GILGAMESH = 2128
+        const val FFXIV_ODIN = 308
 
         /** Small enough that a starting purse covers it, and big enough to see. */
         const val WAGER = 50

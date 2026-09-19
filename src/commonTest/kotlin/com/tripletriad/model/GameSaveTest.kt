@@ -506,6 +506,8 @@ class GameSaveTest {
             quests = QuestLog(period = "d", questIds = listOf("q")),
             achievements = mapOf("a" to 1L),
             stats = Stats(wins = 1),
+            deeds = setOf("d"),
+            npcWins = mapOf("n" to 3),
         )
         val blank = GameSave.new("Kuplu", createdAt = 0L)
 
@@ -516,5 +518,7 @@ class GameSaveTest {
         assertEquals(stored.quests, settled.quests, "quests are no longer server-owned")
         assertEquals(stored.achievements, settled.achievements, "achievements are no longer owned")
         assertEquals(stored.stats, settled.stats, "stats are no longer server-owned")
+        assertEquals(stored.deeds, settled.deeds, "deeds are no longer server-owned")
+        assertEquals(stored.npcWins, settled.npcWins, "npcWins pay through rivalry now")
     }
 }

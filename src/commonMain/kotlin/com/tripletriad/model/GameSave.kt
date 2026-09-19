@@ -56,8 +56,9 @@ data class Stats(
 /**
  * The three multipliers a potion can raise. `Save.DATAS.BOONS` (`Save.as:34`).
  *
- * [luck] is in the save file and in nothing else: no potion grants it ([PotionType] has no LUCK
- * member) and no rule reads it. Carried so a profile round-trips, and no further.
+ * [luck] was in the save file and in nothing else until [PotionType.LUCK]: it counts wins whose
+ * drop table is rolled twice. The field name is the original's, so a profile written before the
+ * potion existed loads with none.
  */
 @Serializable
 data class Boons(
@@ -69,6 +70,7 @@ data class Boons(
     fun raised(modifier: BoonModifier): Boons = when (modifier.type) {
         BoonType.XP -> copy(xp = xp + modifier.value)
         BoonType.MGP -> copy(mgp = mgp + modifier.value)
+        BoonType.LUCK -> copy(luck = luck + modifier.value)
     }
 
     /**
@@ -82,6 +84,7 @@ data class Boons(
     fun spending(type: BoonType): Boons = when (type) {
         BoonType.XP -> copy(xp = (xp - 1).coerceAtLeast(0))
         BoonType.MGP -> copy(mgp = (mgp - 1).coerceAtLeast(0))
+        BoonType.LUCK -> copy(luck = (luck - 1).coerceAtLeast(0))
     }
 }
 
@@ -334,6 +337,18 @@ data class GameSave(
      * server**, because a client writing this one would be choosing when tomorrow starts.
      */
     @SerialName("CAMPAIGN_DAY") val campaignEntries: Map<String, String> = emptyMap(),
+    /**
+     * Deeds done, by id — things the rest of the profile cannot show afterwards.
+     *
+     * Every achievement requirement is a question about the profile as it stands, which is what
+     * lets [com.tripletriad.data.AchievementRepository] re-check the whole catalogue against any
+     * save. A few are about an *event* instead: having lost a card leaves a collection that looks
+     * exactly like one that never held it. The settlement that saw the event records it here, and
+     * `Requirement.Deed` reads it like any other state. A set, not a count: a deed is done or not.
+     *
+     * **Owned by the server** ([withServerOwnedFrom]): a deed can pay a card.
+     */
+    @SerialName("DEEDS") val deeds: Set<String> = emptySet(),
 ) {
     /**
      * Matches begun and abandoned. `Save.as:59`, and the reason `STATS.FORFEITS` is not stored.
@@ -533,6 +548,12 @@ data class GameSave(
         campaignWins = campaignWins + (campaignKey to (campaignWins[campaignKey] ?: 0) + 1),
     )
 
+    /** True once [id] has been done. See [deeds]. */
+    fun hasDeed(id: String): Boolean = id in deeds
+
+    /** Records [id] as done. Idempotent. */
+    fun withDeed(id: String): GameSave = if (id in deeds) this else copy(deeds = deeds + id)
+
     /**
      * Records a win with each of [rules]' active rules, for the Wheel-of-Fortune achievements.
      *
@@ -635,6 +656,9 @@ data class GameSave(
      * - **`xp`, `pvpXp`, `level`, `rank`** — written only by `MatchRewards`, off a replay. `level`
      *   and `rank` are pure functions of the XP fields anyway, so believing them separately was
      *   always a way for two numbers to disagree.
+     * - **`npcWins`** — written only by `MatchRewards.credit`. It used to be harmless to believe, a
+     *   tally nobody else read; it stopped being so when [Rivalry] made it raise what an opponent
+     *   pays. A client that could write it could pay itself by claiming old wins.
      *
      * - **`cards`** — the collection, and the most valuable forgery there was. It closed last,
      *   because it was the one field with a legitimate client-side writer left: `StarterPack`
@@ -667,6 +691,8 @@ data class GameSave(
         campaignRun = stored.campaignRun,
         campaignWins = stored.campaignWins,
         campaignEntries = stored.campaignEntries,
+        deeds = stored.deeds,
+        npcWins = stored.npcWins,
         stats = stored.stats,
         mgp = stored.mgp,
         bag = stored.bag,

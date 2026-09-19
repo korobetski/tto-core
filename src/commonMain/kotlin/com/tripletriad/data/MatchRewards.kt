@@ -2,13 +2,16 @@ package com.tripletriad.data
 
 import com.tripletriad.model.Achievement
 import com.tripletriad.model.BoonType
+import com.tripletriad.model.Boons
 import com.tripletriad.model.DailyQuest
+import com.tripletriad.model.Deeds
 import com.tripletriad.model.GameRules
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.Item
 import com.tripletriad.model.MatchEvent
 import com.tripletriad.model.MatchResult
 import com.tripletriad.model.Npc
+import com.tripletriad.model.asRivalOf
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -45,6 +48,8 @@ data class MatchReward(
     val weeklyQuests: List<DailyQuest> = emptyList(),
     val mgpBoonSpent: Boolean = false,
     val xpBoonSpent: Boolean = false,
+    /** Whether a luck boon was spent rolling [items] twice. Only ever true on a won PvE match. */
+    val luckBoonSpent: Boolean = false,
     /**
      * What the wager moved, and only ever non-empty for a player-versus-player match.
      *
@@ -85,11 +90,15 @@ data class MatchCredit(val save: GameSave, val reward: MatchReward)
  *   applied — a rate is a probability, and a doubled 0.6 is a certainty, not a 1.2.
  * @property xp what the opponent's XP is multiplied by.
  * @property pays whether this match pays MGP and XP at all.
+ * @property rung whether this match is a tournament rung. Stated rather than inferred from the
+ *   multipliers, because a ladder that boosts nothing would otherwise read as free play. It is
+ *   what exempts a rung from rivalry — see [MatchRewards.credit].
  */
 data class RewardBoost(
     val drop: Double = 1.0,
     val xp: Double = 1.0,
     val pays: Boolean = true,
+    val rung: Boolean = false,
 ) {
     init {
         require(drop >= 0.0) { "a drop multiplier cannot be negative: $drop" }
@@ -155,6 +164,14 @@ object MatchRewards {
      *   `Math.round(Math.random() * n)` gives half weight to 0 and to n.
      * @param boost how a tournament run departs from [npc]'s own table. [RewardBoost.NONE] — the
      *   default — is every match outside one, so free play is unaffected by its existing.
+     *
+     * ### Payouts are read off the opponent as it was met
+     *
+     * Outside a tournament, [npc] is first raised to its rivalry stage against [save] — see
+     * [com.tripletriad.model.Rivalry] — so an opponent beaten often enough to have sharpened pays
+     * like the harder opponent it now is. Read before this win is recorded, which is what makes the
+     * win that crosses a threshold pay at the old stage. A tournament rung is exempt: its ladder is
+     * authored as a curve and entered daily, and rivalry would flatten every rung to the top band.
      */
     @Suppress("LongParameterList")
     fun credit(
@@ -166,26 +183,33 @@ object MatchRewards {
         random: Random = Random.Default,
         boost: RewardBoost = RewardBoost.NONE,
     ): MatchCredit {
+        val opponent = if (boost.rung) npc else npc.asRivalOf(save)
+
         // Read before the payout is worked out, and false when nothing is being paid: a boon
         // multiplies a reward, so an unpaid match must not eat one. See [RewardBoost].
         val mgpBoon = boost.pays && save.boons.mgp > 0
         val xpBoon = boost.pays && save.boons.xp > 0
 
-        val baseMgp = if (boost.pays) npc.mgpFor(result) else 0
+        val baseMgp = if (boost.pays) opponent.mgpFor(result) else 0
         val mgp = if (!boost.pays) {
             0
         } else {
             baseMgp + random.nextInt(bonusMax(result) + 1) + boost(baseMgp, mgpBoon)
         }
-        val baseXp = if (boost.pays) scaled(npc.xpFor(result), boost.xp) else 0
+        val baseXp = if (boost.pays) scaled(opponent.xpFor(result), boost.xp) else 0
         val xp = baseXp + boost(baseXp, xpBoon)
 
-        // The drop roll happens whether or not the match pays: a win is a win, and the run's own
-        // multiplier is what a tournament raises here. Rolled off the boosted table rather than
-        // re-rolled afterwards, so one draw per entry is consumed either way.
+        // Spent only where it can do something: a win, against a table with anything on it.
+        // Nothing else is rolled, so a luck boon held through a defeat is still held.
+        val luckBoon = result == MatchResult.WIN && save.boons.luck > 0 && npc.itemRewards.any()
+
         val items = if (result == MatchResult.WIN) {
-            npc.copy(itemRewards = npc.itemRewards.map { it.boostedBy(boost.drop) })
-                .rollRewards(random)
+            drops(
+                npc,
+                boost,
+                luckBoon,
+                random,
+            )
         } else {
             emptyList()
         }
@@ -195,8 +219,7 @@ object MatchRewards {
             .copy(stats = save.stats.recordingStats(result))
             .withMgp(mgp)
             .withXp(xp.toLong())
-        if (mgpBoon) updated = updated.copy(boons = updated.boons.spending(BoonType.MGP))
-        if (xpBoon) updated = updated.copy(boons = updated.boons.spending(BoonType.XP))
+        updated = updated.copy(boons = updated.boons.spent(mgpBoon, xpBoon, luckBoon))
 
         if (result == MatchResult.WIN) {
             updated = updated.withRulesWin(rules).withNpcWin(npc.iconId)
@@ -239,8 +262,28 @@ object MatchRewards {
                 weeklyQuests = weekly.completed,
                 mgpBoonSpent = mgpBoon,
                 xpBoonSpent = xpBoon,
+                luckBoonSpent = luckBoon,
             ),
         )
+    }
+
+    /** Each boon a match drew on, one match's worth less. */
+    private fun Boons.spent(mgp: Boolean, xp: Boolean, luck: Boolean): Boons {
+        var left = this
+        if (mgp) left = left.spending(BoonType.MGP)
+        if (xp) left = left.spending(BoonType.XP)
+        if (luck) left = left.spending(BoonType.LUCK)
+        return left
+    }
+
+    /**
+     * The drop roll happens whether or not the match pays: a win is a win, and the run's own
+     * multiplier is what a tournament raises here. Rolled off the boosted table rather than
+     * re-rolled afterwards, so one draw per entry is consumed either way — two with [lucky].
+     */
+    private fun drops(npc: Npc, boost: RewardBoost, lucky: Boolean, random: Random): List<Item> {
+        val table = npc.copy(itemRewards = npc.itemRewards.map { it.boostedBy(boost.drop) })
+        return if (lucky) table.rollLuckyRewards(random) else table.rollRewards(random)
     }
 
     /**
@@ -323,6 +366,9 @@ object MatchRewards {
         // so what moves is the settlement's business, not the result's. See the KDoc.
         for (id in cardsWon) updated = updated.withCard(id)
         for (id in cardsLost) updated = updated.withoutCard(id)
+        // Before the achievements, which is the whole point: a deed is state the moment it is
+        // recorded, and `Requirement.Deed` reads it in the same pass. See `Deeds`.
+        for (deed in Deeds.fromCardsLost(cardsLost)) updated = updated.withDeed(deed)
 
         val award = AchievementRepository().credit(updated, at)
         val event = MatchEvent(
