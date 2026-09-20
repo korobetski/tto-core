@@ -170,13 +170,19 @@ data class ItemUsed(val player: PlayerState, val effect: ItemEffect)
  * @property formatId which shelf. Offers are filtered by format — a pack of cards a format does not
  *   admit is not for sale in it — so the same item can be on one shelf and not another.
  * @property item the offer's item, matched against the shelf with its stack normalised. `stack` is
- *   an identity here as it is everywhere else on this wire, never a quantity: one tap buys one.
+ *   an identity here as it is everywhere else on this wire, **never** a quantity — that is what
+ *   [count] is for, and keeping the two apart is what lets the shelf be matched on the item at all.
+ * @property count how many of that offer to buy, all or nothing. Defaults to one, so a client that
+ *   does not know about it sends what it always sent; the server caps it and prices it — see
+ *   `ShopCatalog.buy` and `ShopCatalog.MAX_PER_PURCHASE`. Ten packs are one request rather than
+ *   ten, which is what makes the purse move once and the bag land once.
  */
 @Serializable
 data class BuyRequest(
     val item: Item,
     val formatId: String,
     override val operationId: String,
+    val count: Int = 1,
 ) : Idempotent
 
 /**

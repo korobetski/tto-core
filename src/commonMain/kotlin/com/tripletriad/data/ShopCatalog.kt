@@ -21,8 +21,36 @@ data class ShopOffer(val item: Item, val price: Int) {
         require(price > 0) { "an offer must cost something, was $price" }
     }
 
-    /** True when [save] can pay for it. */
-    fun isAffordableBy(save: GameSave): Boolean = save.mgp >= price
+    /**
+     * What [count] of it costs.
+     *
+     * A `Long`, because this multiplication is reached with a count that arrived over the wire:
+     * in `Int` a large enough one overflows to a *negative* total, which passes every "can you
+     * pay for it" test and then pays the buyer. See [ShopCatalog.buy], which refuses such a count
+     * outright — this is the second of the two guards, and the one that does not depend on the
+     * first being right.
+     */
+    fun priceFor(count: Int): Long = price.toLong() * count
+
+    /** True when [save] can pay for [count] of it. */
+    fun isAffordableBy(save: GameSave, count: Int = 1): Boolean = priceFor(count) <= save.mgp
+
+    /**
+     * The most of it [save] could pay for in one purchase.
+     *
+     * Zero when it cannot afford one, and never more than [ShopCatalog.MAX_PER_PURCHASE]. Here
+     * rather than in the shop screen because the button that offers "as many as I can afford" and
+     * the code that grants it must not be able to disagree.
+     *
+     * One at most for an item that does not stack, for the same reason: [ShopCatalog.buy] refuses
+     * any other count of one, so offering two would be offering a purchase that does nothing.
+     */
+    fun affordableCount(save: GameSave): Int =
+        if (!item.stackable) {
+            minOf(save.mgp / price, 1)
+        } else {
+            (save.mgp / price).coerceAtMost(ShopCatalog.MAX_PER_PURCHASE)
+        }
 }
 
 /**
@@ -220,11 +248,36 @@ object ShopCatalog {
      * both happen or neither, and the AS3 got that wrong in the direction that matters — it
      * subtracted the price and *then* checked (`:144-146`), so the check only ever decided whether
      * the button stayed enabled.
+     *
+     * [count] is all-or-nothing for the same reason: ten packs at a price the purse covers eight
+     * of buys **nothing**, rather than eight and a confusing note. A refused count — zero,
+     * negative, past [MAX_PER_PURCHASE], or more than one of something that does not stack —
+     * returns the profile unchanged, which is this file's one way of saying no.
      */
-    fun buy(save: GameSave, offer: ShopOffer): GameSave {
-        if (!offer.isAffordableBy(save)) return save
-        return Inventory.add(save.withMgp(-offer.price), offer.item)
+    fun buy(save: GameSave, offer: ShopOffer, count: Int = 1): GameSave {
+        if (count !in 1..MAX_PER_PURCHASE) return save
+        // A stack of two of something that does not stack would be one item claiming to be two —
+        // see `PouchItem.withStack`, which answers itself whatever it is asked. Nothing on either
+        // shelf is such an item today; this is here so that the day one is, it is refused rather
+        // than granted for free.
+        if (count > 1 && !offer.item.stackable) return save
+        if (!offer.isAffordableBy(save, count)) return save
+        return Inventory.add(
+            save.withMgp(-offer.priceFor(count).toInt()),
+            offer.item.withStack(count),
+        )
     }
+
+    /**
+     * The most of one offer a single purchase may carry.
+     *
+     * A cap rather than the purse's own arithmetic, for two reasons that point the same way: a
+     * hundred packs is already past what anybody opens in a sitting, and an uncapped count is a
+     * number from a client multiplied by a price on the server. `Int` would overflow at about
+     * 29 000 of the dearest pack — [ShopOffer.priceFor] is a `Long` so that it cannot, and this
+     * is what stops the question being asked at all.
+     */
+    const val MAX_PER_PURCHASE: Int = 99
 }
 
 /**

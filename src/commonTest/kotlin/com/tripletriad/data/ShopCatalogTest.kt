@@ -7,6 +7,7 @@ import com.tripletriad.model.CardItem
 import com.tripletriad.model.GameSave
 import com.tripletriad.model.PotionItem
 import com.tripletriad.model.PotionType
+import com.tripletriad.model.PouchItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -283,6 +284,98 @@ class ShopCatalogTest {
         assertEquals(100, twice.mgp)
         assertEquals(1, twice.bag.size, "one row: ${twice.bag}")
         assertEquals(2, Inventory.count(twice, offer.item))
+    }
+
+    // ---- Buying several at once ------------------------------------------
+
+    /** Ten packs cost ten prices and land as one stack of ten. */
+    @Test
+    fun buyingTenTakesTenPricesAndGivesTenItems() {
+        val offer = ShopOffer(PotionItem(PotionType.MGP), price = 50)
+
+        val bought = ShopCatalog.buy(profile(mgp = 1_000), offer, count = 10)
+
+        assertEquals(500, bought.mgp)
+        assertEquals(1, bought.bag.size, "one row: ${bought.bag}")
+        assertEquals(10, Inventory.count(bought, offer.item))
+    }
+
+    /**
+     * All or nothing: a purse that covers nine of ten buys none of them.
+     *
+     * The alternative — granting the nine it can pay for — is a button that says one thing and
+     * does another, and leaves the player working out which of the two numbers was the truth.
+     */
+    @Test
+    fun aCountThePurseCannotCoverBuysNothing() {
+        val save = profile(mgp = 499)
+        val offer = ShopOffer(PotionItem(PotionType.MGP), price = 50)
+
+        assertFalse(offer.isAffordableBy(save, count = 10))
+        assertEquals(save, ShopCatalog.buy(save, offer, count = 10))
+        assertEquals(9, offer.affordableCount(save), "nine is what it can afford")
+    }
+
+    /** What the purse could take at once, never past the cap. */
+    @Test
+    fun theAffordableCountStopsAtTheCap() {
+        val offer = ShopOffer(PotionItem(PotionType.MGP), price = 50)
+
+        assertEquals(0, offer.affordableCount(profile(mgp = 49)))
+        assertEquals(1, offer.affordableCount(profile(mgp = 50)))
+        assertEquals(
+            ShopCatalog.MAX_PER_PURCHASE,
+            offer.affordableCount(profile(mgp = 1_000_000)),
+        )
+    }
+
+    /**
+     * **Nothing offers more than one of a thing that does not stack.**
+     *
+     * `buy` refuses any count above one of it, so a count the stepper could reach and the purchase
+     * would drop is the one way these two can disagree. No shop offer holds a pouch today — it is
+     * an auction payout — which is exactly why this is pinned here rather than left to be noticed.
+     */
+    @Test
+    fun aThingThatDoesNotStackIsNeverOfferedTwice() {
+        val pouch = PouchItem(mgp = 500, cardId = 1, lotId = "lot-1")
+        val offer = ShopOffer(pouch, price = 50)
+        val rich = profile(mgp = 1_000_000)
+
+        assertFalse(pouch.stackable, "the fixture needs an item that does not stack")
+        assertEquals(1, offer.affordableCount(rich), "a purse for twenty thousand, one on offer")
+        assertEquals(rich, ShopCatalog.buy(rich, offer, count = 2), "and two is refused")
+    }
+
+    @Test
+    fun aCountOutsideTheCapBuysNothing() {
+        val save = profile(mgp = 1_000_000)
+        val offer = ShopOffer(PotionItem(PotionType.MGP), price = 50)
+
+        for (count in listOf(0, -1, ShopCatalog.MAX_PER_PURCHASE + 1)) {
+            assertEquals(save, ShopCatalog.buy(save, offer, count), "count $count")
+        }
+    }
+
+    /**
+     * **A count large enough to overflow must not pay the buyer.**
+     *
+     * `price * count` in `Int` wraps negative somewhere above 29 000 of the dearest offer, and a
+     * negative total is affordable to everybody — `withMgp(-total)` would then *credit* the
+     * purse and hand over the stack. The count is capped before the multiplication and the
+     * multiplication is a `Long` anyway; this holds both guards at once, since either alone would
+     * be enough and neither alone is obvious to the next reader.
+     */
+    @Test
+    fun anOverflowingCountNeitherPaysNorDelivers() {
+        val save = profile(mgp = 1_000)
+        val offer = ShopOffer(PotionItem(PotionType.MGP), price = 50)
+
+        for (count in listOf(Int.MAX_VALUE, Int.MIN_VALUE, 1 shl 26)) {
+            val after = ShopCatalog.buy(save, offer, count)
+            assertEquals(save, after, "count $count")
+            assertEquals(1_000, after.mgp, "count $count paid the buyer")
+        }
     }
 
     /** A bought card is a bag item, not a collection entry — using it is a separate step. */

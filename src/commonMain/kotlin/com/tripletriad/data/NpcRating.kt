@@ -189,6 +189,14 @@ object NpcRating {
      *
      * Absolute, and on 2026-09-15 found not to be the game's: see [calibratedDifficulty] for what
      * replaced it wherever the game gives a level to calibrate against.
+     *
+     * Neither is what the shipped client rates with any more. On 2026-09-20 its roster was measured
+     * against four collections a simulated account actually held, and the bands were cut at the
+     * roster's own deciles and frozen as thresholds — equal bands leave the bottom of the scale
+     * empty, which matters because the client gates its opponent list on the difficulty. That
+     * threshold table lives with the roster it was cut from, in the client's `NpcRatingBundleTest`.
+     * Both functions here stay: they are the general answer, and a caller with no roster to cut
+     * deciles from still needs one.
      */
     fun difficultyFor(winRate: Double): Int {
         require(winRate in 0.0..1.0) { "a win rate must be in 0..1, was $winRate" }
@@ -224,8 +232,14 @@ object NpcRating {
      * FFXIV opponents, and the bands ranked them with a Spearman correlation of 0.43 against it —
      * card power alone does no better (0.45), and the FFXIV starter as the yardstick did worse
      * (0.22). Neither the AI nor the yardstick is the player those levels were set for. So where
-     * the game gives a level, `npcs.json` carries it and nothing measures it; this rates the rest —
-     * FFVIII's opponents, and the FFXIV ones the site lacks — among the ones it does.
+     * the game gives a level, `npcs.json` carried it and nothing measured it; this rated the rest
+     * — FFVIII's opponents, and the FFXIV ones the site lacks — among the ones it did.
+     *
+     * Carried, rated, did: the shipped roster stopped being anchored that way on 2026-09-20. Played
+     * against real collections rather than against one synthetic profile, those site levels rank
+     * the roster at a Spearman correlation of 0.44 and non-monotonically, and thirteen opponents
+     * they label 1 or 2 are in fact top-band. The anchoring was the best answer available while the
+     * only yardstick was a profile nobody has; it is not one any more.
      *
      * ### Monotone, by construction
      *

@@ -39,52 +39,44 @@ internal object PlaceAchievements {
             members = listOf(
                 "tt-master",
                 "jonas",
-                "ruhtwyda",
-                "aurifort",
                 "guhtwint",
-                "queen-of-cards",
             ),
         ),
         Place(
             zoneId = "uldah",
             campaignKey = "uldah",
-            mgp = 600,
+            mgp = 900,
             members = listOf(
                 "roger",
                 "kilfufu",
                 "wymond",
-                "droyn",
                 "fufulupa",
                 "momodi",
                 "fhobhas",
-                "hab",
                 "papalymo",
             ),
         ),
         Place(
             zoneId = "limsa",
             campaignKey = "limsa",
-            mgp = 500,
+            mgp = 700,
             members = listOf(
                 "memeroon",
                 "baderon",
                 "mimidoa",
                 "gegeruju",
-                "furtive-former-imperial",
             ),
         ),
         Place(
             zoneId = "gridania",
             campaignKey = "gridania",
-            mgp = 400,
+            mgp = 1000,
             members = listOf(
                 "maisenta",
                 "ylaire",
                 "miounne",
                 "sezul-totoloc",
-                "buscarron",
                 "momo",
-                "landenel",
             ),
         ),
         Place(
@@ -100,7 +92,7 @@ internal object PlaceAchievements {
         Place(
             zoneId = "battlehall",
             campaignKey = "battlehall",
-            mgp = 800,
+            mgp = 1000,
             members = listOf(
                 "wyra",
                 "nell",
@@ -114,7 +106,7 @@ internal object PlaceAchievements {
         Place(
             zoneId = "ishgard",
             campaignKey = "ishgard",
-            mgp = 300,
+            mgp = 500,
             members = listOf(
                 "joellaut",
                 "ourdilic",
@@ -123,7 +115,7 @@ internal object PlaceAchievements {
         Place(
             zoneId = "dravania",
             campaignKey = "dravania",
-            mgp = 800,
+            mgp = 900,
             members = listOf(
                 "redbill-storeboy",
                 "seika",
@@ -136,11 +128,9 @@ internal object PlaceAchievements {
         Place(
             zoneId = "gyr-abania",
             campaignKey = "gyr-abania",
-            mgp = 700,
+            mgp = 1000,
             members = listOf(
                 "ercanbald",
-                "sladkey",
-                "arsieu",
                 "umber-torrent",
                 "garima",
                 "ironworks-hand",
@@ -150,7 +140,7 @@ internal object PlaceAchievements {
         Place(
             zoneId = "kugane",
             campaignKey = "kugane",
-            mgp = 500,
+            mgp = 900,
             members = listOf(
                 "tokimori",
                 "hanagasa",
@@ -182,7 +172,7 @@ internal object PlaceAchievements {
         Place(
             zoneId = "norvrandt",
             campaignKey = "norvrandt",
-            mgp = 500,
+            mgp = 600,
             members = listOf(
                 "cobleva",
                 "lewto-sue",
@@ -196,12 +186,15 @@ internal object PlaceAchievements {
                 "hargra",
                 "grewenn",
                 "lamlyn",
+                "furtive-former-imperial",
+                "sladkey",
+                "arsieu",
             ),
         ),
         Place(
             zoneId = "sharlayan",
             campaignKey = "sharlayan",
-            mgp = 400,
+            mgp = 700,
             members = listOf(
                 "cheatingway",
                 "ruissenaud",
@@ -218,7 +211,7 @@ internal object PlaceAchievements {
         Place(
             zoneId = "tural",
             campaignKey = "tural",
-            mgp = 700,
+            mgp = 1000,
             members = listOf(
                 "nyikweni",
                 "wopli",
@@ -246,14 +239,61 @@ internal object PlaceAchievements {
             ),
         ),
         Place(
+            zoneId = "balamb-garden",
+            campaignKey = "balamb-garden",
+            mgp = 600,
+            members = listOf(
+                "jogger",
+                "bench-man",
+                "library-girl",
+                "garden-faculty",
+                "cafeteria-seed",
+            ),
+        ),
+        Place(
+            zoneId = "dollet",
+            campaignKey = "dollet",
+            mgp = 500,
+            members = listOf(
+                "dollet-pub-owner",
+                "dollet-radio-tech",
+                "dollet-duke",
+                "galbadian-sentry",
+                "dollet-fisher",
+            ),
+        ),
+        Place(
+            zoneId = "timber",
+            campaignKey = "timber",
+            mgp = 900,
+            members = listOf(
+                "timber-pub-owner",
+                "timber-maniacs",
+                "owl-lookout",
+                "train-conductor",
+                "galbadia-officer",
+            ),
+        ),
+        Place(
             zoneId = "galbadia",
             campaignKey = "galbadia",
-            mgp = 300,
+            mgp = 200,
             members = listOf(
                 "zone",
                 "martine",
                 "watts",
                 "caraway",
+            ),
+        ),
+        Place(
+            zoneId = "winhill",
+            campaignKey = "winhill",
+            mgp = 500,
+            members = listOf(
+                "raine",
+                "winhill-florist",
+                "vase-lady",
+                "winhill-militia",
             ),
         ),
         Place(
@@ -266,9 +306,32 @@ internal object PlaceAchievements {
             ),
         ),
         Place(
+            zoneId = "shumi-village",
+            campaignKey = "shumi-village",
+            mgp = 600,
+            members = listOf(
+                "shumi-elder",
+                "shumi-artisan",
+                "moomba",
+                "shumi-attendant",
+                "shumi-sculptor",
+            ),
+        ),
+        Place(
+            zoneId = "trabia",
+            campaignKey = "trabia",
+            mgp = 1000,
+            members = listOf(
+                "trabia-classmate",
+                "trabia-cadet",
+                "trabia-coach",
+                "trabia-mechanic",
+            ),
+        ),
+        Place(
             zoneId = "centra",
             campaignKey = "centra",
-            mgp = 300,
+            mgp = 600,
             members = listOf(
                 "chocoboy",
                 "ufo",
@@ -279,12 +342,13 @@ internal object PlaceAchievements {
         Place(
             zoneId = "esthar",
             campaignKey = "esthar",
-            mgp = 300,
+            mgp = 600,
             members = listOf(
                 "piet",
                 "odine",
                 "ellone",
                 "laguna",
+                "presidential-aide",
             ),
         ),
         Place(
