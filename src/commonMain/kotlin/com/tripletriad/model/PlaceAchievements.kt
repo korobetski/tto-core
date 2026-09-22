@@ -236,18 +236,10 @@ internal object PlaceAchievements {
                 "diamond",
                 "ma-dincht",
                 "trepies",
-            ),
-        ),
-        Place(
-            zoneId = "balamb-garden",
-            campaignKey = "balamb-garden",
-            mgp = 600,
-            members = listOf(
                 "jogger",
                 "bench-man",
                 "library-girl",
                 "garden-faculty",
-                "cafeteria-seed",
             ),
         ),
         Place(
